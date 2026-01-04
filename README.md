@@ -1,3 +1,10 @@
+About this fork
+----------------
+
+This is a fork of OpenMW 0.51 designed for extracting map images from Morrowind.
+The tool generates a world height map at a resolution of 32x32 pixels per cell, local map tiles at 256x256 pixels per cell, and a world map composed of these tiles.
+
+
 OpenMW
 ======
 
@@ -8,13 +15,6 @@ Font Licenses:
 * DejaVuLGCSansMono.ttf: custom (see [files/data/fonts/DejaVuFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/DejaVuFontLicense.txt) for more information)
 * DemonicLetters.ttf: SIL Open Font License (see [files/data/fonts/DemonicLettersFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/DemonicLettersFontLicense.txt) for more information)
 * MysticCards.ttf: SIL Open Font License (see [files/data/fonts/MysticCardsFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/MysticCardsFontLicense.txt) for more information)
-
-
-About this fork
-----------------
-
-This is a fork of OpenMW 0.51 designed for extracting map images from Morrowind.
-The tool generates a world height map at a resolution of 32x32 pixels per cell, local map tiles at 256x256 pixels per cell, and a world map composed of these tiles.
 
 
 Usage
