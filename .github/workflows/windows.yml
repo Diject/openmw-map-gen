@@ -24,6 +24,10 @@ on:
       release:
         default: false
         type: boolean
+      artifact-suffix:
+        description: Suffix to add to artifact names
+        default: ""
+        type: string
 
 jobs:
   Windows:
@@ -116,6 +120,22 @@ jobs:
     - name: Build OpenMW
       run: cmake --build ${{ github.workspace }}/build
 
+    - name: Verify embedded manifest
+      shell: pwsh
+      run: |
+        Write-Host "Checking if manifest is embedded in openmw.exe..."
+        $exePath = "${{ github.workspace }}/build/openmw.exe"
+        if (Test-Path $exePath) {
+          # Extract manifest to verify it exists
+          mt.exe -inputresource:$exePath`;#1 -out:${{ github.workspace }}/build/extracted-manifest.xml
+          if (Test-Path "${{ github.workspace }}/build/extracted-manifest.xml") {
+            Write-Host "Manifest successfully embedded in openmw.exe"
+            Get-Content "${{ github.workspace }}/build/extracted-manifest.xml" | Select-Object -First 10
+          } else {
+            Write-Warning "Manifest not found in openmw.exe"
+          }
+        }
+
     - name: Copy missing DLLs
       run: |
         cp ${{ github.workspace }}/deps/vcpkg-x64-${{ inputs.msvc }}-${{ inputs.vcpkg-deps-tag }}/installed/x64-windows/bin/Release/MyGUIEngine.dll ${{ github.workspace }}/build
@@ -184,19 +204,19 @@ jobs:
     - name: Store OpenMW archived pdb files
       uses: actions/upload-artifact@v4
       with:
-        name: openmw-windows-${{ inputs.msvc }}-pdb-${{ github.sha }}
+        name: openmw-windows-${{ inputs.msvc }}-pdb${{ inputs.artifact-suffix }}-${{ github.sha }}
         path: ${{ github.workspace }}/pdb/*
 
     - name: Store OpenMW build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: openmw-windows-${{ inputs.msvc }}-${{ github.sha }}
+        name: openmw-windows-${{ inputs.msvc }}${{ inputs.artifact-suffix }}-${{ github.sha }}
         path: ${{ github.workspace }}/install/*
 
     - name: Store symbol server artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: openmw-windows-${{ inputs.msvc }}-sym-store-${{ github.sha }}
+        name: openmw-windows-${{ inputs.msvc }}-sym-store${{ inputs.artifact-suffix }}-${{ github.sha }}
         path: ${{ github.workspace }}/SymStore/*
 
     - name: Upload to symbol server

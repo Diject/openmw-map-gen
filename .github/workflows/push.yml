@@ -4,7 +4,8 @@ on:
 - workflow_dispatch
 
 env:
-  BUILD_TYPE: RelWithDebInfo
+  BUILD_TYPE: Release
+  VCPKG_FEATURE_FLAGS: manifests,registries
 
 jobs:
   Ubuntu:
@@ -137,3 +138,22 @@ jobs:
       image: ${{ matrix.image }}
       vcpkg-deps-tag: ${{ needs.Output-Envs.outputs.VCPKG_DEPS_TAG }}
       build-type: ${{ needs.Output-Envs.outputs.BUILD_TYPE }}
+
+  Windows-Installer:
+    name: Windows Installer
+    needs:
+      - Output-Envs
+
+    strategy:
+      fail-fast: true
+      matrix:
+        image:
+        - "2022"
+
+    uses: ./.github/workflows/windows.yml
+    with:
+      image: ${{ matrix.image }}
+      vcpkg-deps-tag: ${{ needs.Output-Envs.outputs.VCPKG_DEPS_TAG }}
+      build-type: ${{ needs.Output-Envs.outputs.BUILD_TYPE }}
+      package: true
+      artifact-suffix: "-installer"

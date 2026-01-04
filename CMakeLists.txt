@@ -85,6 +85,9 @@ set(OPENMW_VERSION_RELEASE 0)
 set(OPENMW_LUA_API_REVISION 110)
 set(OPENMW_POSTPROCESSING_API_REVISION 4)
 
+# MapExtractor fork version
+set(MAPEXTRACTOR_VERSION_BUILD 0)  # Build number for MapExtractor fork
+
 set(OPENMW_VERSION_COMMITHASH "")
 set(OPENMW_VERSION_TAGHASH "")
 set(OPENMW_VERSION_COMMITDATE "")
@@ -380,6 +383,33 @@ if (WIN32)
         -DNOMB # name conflict with MWGui::MessageBox
         -DNOGDI # name conflict with osgAnimation::MorphGeometry::RELATIVE
     )
+    
+    # Embed Windows manifest
+    if(MSVC)
+        # Generate manifest from template with current version
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/CI/windows-manifest.xml.in"
+            "${CMAKE_BINARY_DIR}/windows-manifest.xml"
+            @ONLY
+        )
+        set(OPENMW_MANIFEST_FILE "${CMAKE_BINARY_DIR}/windows-manifest.xml")
+        message(STATUS "Generated Windows manifest v${OPENMW_VERSION}: ${OPENMW_MANIFEST_FILE}")
+        
+        # Generate .rc files with absolute path to manifest
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/files/windows/openmw.rc.in"
+            "${CMAKE_BINARY_DIR}/openmw.rc"
+            @ONLY
+        )
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/files/windows/launcher.rc.in"
+            "${CMAKE_BINARY_DIR}/launcher.rc"
+            @ONLY
+        )
+        
+        set(OPENMW_RC_FILE "${CMAKE_BINARY_DIR}/openmw.rc")
+        set(LAUNCHER_RC_FILE "${CMAKE_BINARY_DIR}/launcher.rc")
+    endif()
 endif()
 
 if(OPENMW_USE_SYSTEM_BULLET)
@@ -926,21 +956,22 @@ elseif(NOT APPLE)
         INSTALL(DIRECTORY "${INSTALL_SOURCE}/resources" DESTINATION ".")
 
         SET(CPACK_GENERATOR "NSIS")
-        SET(CPACK_PACKAGE_NAME "OpenMW")
-        SET(CPACK_PACKAGE_VENDOR "OpenMW.org")
-        SET(CPACK_PACKAGE_VERSION ${OPENMW_VERSION})
+        SET(CPACK_PACKAGE_NAME "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_VENDOR "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_VERSION "${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}")
         SET(CPACK_PACKAGE_VERSION_MAJOR ${OPENMW_VERSION_MAJOR})
         SET(CPACK_PACKAGE_VERSION_MINOR ${OPENMW_VERSION_MINOR})
         SET(CPACK_PACKAGE_VERSION_PATCH ${OPENMW_VERSION_RELEASE})
-        SET(CPACK_PACKAGE_EXECUTABLES "openmw;OpenMW")
+        SET(CPACK_PACKAGE_VERSION_TWEAK ${MAPEXTRACTOR_VERSION_BUILD})
+        SET(CPACK_PACKAGE_EXECUTABLES "openmw;OpenMW MapExtractor")
         IF(BUILD_LAUNCHER)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-launcher;OpenMW Launcher")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-launcher;OpenMW-MapExtractor Launcher")
         ENDIF(BUILD_LAUNCHER)
         IF(BUILD_OPENCS)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-cs;OpenMW Construction Set")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-cs;OpenMW-MapExtractor Construction Set")
         ENDIF(BUILD_OPENCS)
         IF(BUILD_WIZARD)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-wizard;OpenMW Wizard")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-wizard;OpenMW-MapExtractor Wizard")
         ENDIF(BUILD_WIZARD)
         SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Readme.lnk' '\$INSTDIR\\\\README.txt'")
         SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
@@ -950,11 +981,13 @@ elseif(NOT APPLE)
         SET(CPACK_RESOURCE_FILE_README "${OpenMW_SOURCE_DIR}/README.md")
         SET(CPACK_PACKAGE_DESCRIPTION_FILE "${OpenMW_SOURCE_DIR}/README.md")
         SET(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
-        SET(CPACK_NSIS_DISPLAY_NAME "OpenMW ${OPENMW_VERSION}")
-        SET(CPACK_NSIS_HELP_LINK "https:\\\\\\\\www.openmw.org")
-        SET(CPACK_NSIS_URL_INFO_ABOUT "https:\\\\\\\\www.openmw.org")
+        SET(CPACK_NSIS_DISPLAY_NAME "OpenMW-MapExtractor ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}")
+        SET(CPACK_NSIS_HELP_LINK "https:\\\\\\\\github.com\\\\Diject\\\\openmw-map-gen")
+        SET(CPACK_NSIS_URL_INFO_ABOUT "https:\\\\\\\\github.com\\\\Diject\\\\openmw-map-gen")
         SET(CPACK_NSIS_INSTALLED_ICON_NAME "openmw-launcher.exe")
         SET(CPACK_NSIS_MUI_FINISHPAGE_RUN "openmw-launcher.exe")
+        SET(CPACK_NSIS_PACKAGE_NAME "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenMW-MapExtractor")
         SET(CPACK_NSIS_MUI_ICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_NSIS_MUI_UNIICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_PACKAGE_ICON "${OpenMW_SOURCE_DIR}\\\\files\\\\openmw.bmp")
