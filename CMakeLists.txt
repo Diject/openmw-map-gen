@@ -992,116 +992,64 @@ elseif(NOT APPLE)
         SET(CPACK_NSIS_MUI_UNIICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_PACKAGE_ICON "${OpenMW_SOURCE_DIR}\\\\files\\\\openmw.bmp")
         
-        # Enable unique install directory check and multiple installations support
-        SET(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+        # Support multiple installations in different directories
+        # Check if path is already occupied and handle updates/reinstalls
+        SET(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL OFF)
         SET(CPACK_NSIS_MODIFY_PATH OFF)
         
-        # Custom NSIS script to handle multiple installations
-        SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-            ; Write install location to a unique registry key based on install path
-            Push \\\"$INSTDIR\\\"
-            Call GetMD5
-            Pop \\\$R0
-            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"DisplayName\\\" \\\"OpenMW-MapExtractor ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
-            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"UninstallString\\\" \\\"\\\$\\\\\\\"$INSTDIR\\\\Uninstall.exe\\\\\\\"\\\$\\\\\\\"\\\"
-            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"InstallLocation\\\" \\\"$INSTDIR\\\"
-            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"DisplayVersion\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
-            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"Publisher\\\" \\\"OpenMW-MapExtractor\\\"
-            WriteRegDWORD HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"NoModify\\\" 1
-            WriteRegDWORD HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"NoRepair\\\" 1
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+        # Add custom page and logic to handle existing installations
+        SET(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "
+            ; Check if this directory already has an installation
+            ReadRegStr \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Version\\\"
+            StrCmp \\\$R0 \\\"\\\" install_new_version
             
-            ; Store the hash in uninstall.exe data for use during uninstallation
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\" \\\"PathHash\\\" \\\"\\\$R0\\\"
+            ; Directory already has an installation
+            ReadRegStr \\\$R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"UninstallString\\\"
+            
+            ; Check if it's the same version
+            StrCmp \\\$R0 \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\" same_version different_version
+            
+            same_version:
+                MessageBox MB_YESNO|MB_ICONQUESTION \\\"OpenMW-MapExtractor \\\$R0 is already installed in this location.$\\\\n$\\\\nDo you want to reinstall/repair this installation?\\\" IDYES install_new_version
+                Abort
+            
+            different_version:
+                MessageBox MB_YESNO|MB_ICONQUESTION \\\"OpenMW-MapExtractor \\\$R0 is already installed in this location.$\\\\n$\\\\nDo you want to update to version ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}?$\\\\n$\\\\nThe previous version will be uninstalled first.\\\" IDYES uninstall_old
+                Abort
+            
+            uninstall_old:
+                ; Run the uninstaller silently
+                ClearErrors
+                ExecWait '\\\$R1 /S _?=\\\$INSTDIR' \\\$R2
+                IfErrors uninstall_failed
+                StrCmp \\\$R2 0 install_new_version uninstall_failed
+                
+            uninstall_failed:
+                MessageBox MB_OK|MB_ICONSTOP \\\"Failed to uninstall the previous version.$\\\\nPlease uninstall it manually before installing the new version.\\\"
+                Abort
+            
+            install_new_version:
+            "
+        )
+        
+        # Store installation info
+        SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+            ; Store installation information
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"UninstallString\\\" \\\"\\\$\\\\\\\"$INSTDIR\\\\Uninstall.exe\\\\\\\"\\\$\\\\\\\"\\\"
             "
         )
         
         SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-            ; Read the hash from registry
-            ReadRegStr \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\" \\\"PathHash\\\"
+            ; Delete installation registry keys for this path
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\"
             
-            ; Delete the unique uninstall registry keys
-            DeleteRegKey HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\"
-            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\"
-            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\"
-            
-            ; Check if there are any other installations
-            EnumRegKey \\\$R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\" 0
-            StrCmp \\\$R1 \\\"\\\" 0 +2
+            ; Check if there are any other installations left
+            EnumRegKey \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\" 0
+            StrCmp \\\$R0 \\\"\\\" 0 +2
+            ; No more installations, remove the parent key
             DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\"
-            "
-        )
-        
-        # Add MD5 hash function to NSIS script
-        SET(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "
-            !include \\\"LogicLib.nsh\\\"
-            
-            ; Simple hash function to create unique ID from install path
-            Function GetMD5
-                Exch \\\$0
-                Push \\\$1
-                Push \\\$2
-                
-                StrLen \\\$1 \\\$0
-                IntOp \\\$2 0 + 0
-                
-                loop:
-                    IntCmp \\\$2 \\\$1 done done
-                    StrCpy \\\$R9 \\\$0 1 \\\$2
-                    IntOp \\\$R8 0 + 0
-                    StrCmp \\\$R9 \\\"\\\\\\\" 0 +2
-                    IntOp \\\$R8 \\\$R8 + 92
-                    StrCmp \\\$R9 \\\":\\\" 0 +2
-                    IntOp \\\$R8 \\\$R8 + 58
-                    StrCmp \\\$R9 \\\"A\\\" 0 +2
-                    IntOp \\\$R8 \\\$R8 + 65
-                    StrCmp \\\$R9 \\\"B\\\" 0 +2
-                    IntOp \\\$R8 \\\$R8 + 66
-                    StrCmp \\\$R9 \\\"C\\\" 0 +2
-                    IntOp \\\$R8 \\\$R8 + 67
-                    ; Add more characters as needed or use CRC plugin for production
-                    IntOp \\\$2 \\\$2 + 1
-                    Goto loop
-                    
-                done:
-                    ; Simple hash - in production use MD5 plugin
-                    Push \\\$0
-                    Call StrToHex
-                    Pop \\\$0
-                    
-                Pop \\\$2
-                Pop \\\$1
-                Exch \\\$0
-            FunctionEnd
-            
-            Function StrToHex
-                Exch \\\$0
-                Push \\\$1
-                Push \\\$2
-                Push \\\$3
-                
-                StrCpy \\\$1 \\\"\\\"
-                StrLen \\\$2 \\\$0
-                IntOp \\\$3 0 + 0
-                
-                hexloop:
-                    IntCmp \\\$3 \\\$2 hexdone hexdone
-                    StrCpy \\\$R9 \\\$0 1 \\\$3
-                    IntFmt \\\$R8 \\\"%02X\\\" \\\$R9
-                    StrCpy \\\$1 \\\$1\\\$R8
-                    IntOp \\\$3 \\\$3 + 1
-                    IntCmp \\\$3 8 hexdone
-                    Goto hexloop
-                    
-                hexdone:
-                
-                Pop \\\$3
-                Pop \\\$2
-                StrCpy \\\$0 \\\$1
-                Pop \\\$1
-                Exch \\\$0
-            FunctionEnd
             "
         )
 
