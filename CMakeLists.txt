@@ -997,58 +997,39 @@ elseif(NOT APPLE)
         SET(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL OFF)
         SET(CPACK_NSIS_MODIFY_PATH OFF)
         
-        # Add custom page and logic to handle existing installations
+        # Check for existing installation and handle updates
         SET(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "
-            ; Check if this directory already has an installation
-            ReadRegStr \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Version\\\"
-            StrCmp \\\$R0 \\\"\\\" install_new_version
-            
-            ; Directory already has an installation
-            ReadRegStr \\\$R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"UninstallString\\\"
-            
-            ; Check if it's the same version
-            StrCmp \\\$R0 \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\" same_version different_version
-            
-            same_version:
-                MessageBox MB_YESNO|MB_ICONQUESTION \\\"OpenMW-MapExtractor \\\$R0 is already installed in this location.$\\\\n$\\\\nDo you want to reinstall/repair this installation?\\\" IDYES install_new_version
+            ReadRegStr $R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\" \\\"Version\\\"
+            StrCmp $R0 \\\"\\\" install_new
+            ReadRegStr $R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\" \\\"UninstallString\\\"
+            StrCmp $R0 \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\" ask_reinstall ask_update
+            ask_reinstall:
+                MessageBox MB_YESNO \\\"Version $R0 is already installed here. Reinstall?\\\" IDYES install_new
                 Abort
-            
-            different_version:
-                MessageBox MB_YESNO|MB_ICONQUESTION \\\"OpenMW-MapExtractor \\\$R0 is already installed in this location.$\\\\n$\\\\nDo you want to update to version ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}?$\\\\n$\\\\nThe previous version will be uninstalled first.\\\" IDYES uninstall_old
+            ask_update:
+                MessageBox MB_YESNO \\\"Version $R0 is installed here. Update to ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}?\\\" IDYES do_uninstall
                 Abort
-            
-            uninstall_old:
-                ; Run the uninstaller silently
-                ClearErrors
-                ExecWait '\\\$R1 /S _?=\\\$INSTDIR' \\\$R2
-                IfErrors uninstall_failed
-                StrCmp \\\$R2 0 install_new_version uninstall_failed
-                
-            uninstall_failed:
-                MessageBox MB_OK|MB_ICONSTOP \\\"Failed to uninstall the previous version.$\\\\nPlease uninstall it manually before installing the new version.\\\"
+            do_uninstall:
+                ExecWait '\\\"$R1\\\" /S _?=$INSTDIR' $R2
+                StrCmp $R2 0 install_new
+                MessageBox MB_OK \\\"Uninstall failed. Please uninstall manually.\\\"
                 Abort
-            
-            install_new_version:
+            install_new:
             "
         )
         
         # Store installation info
         SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-            ; Store installation information
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
-            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\" \\\"UninstallString\\\" \\\"\\\$\\\\\\\"$INSTDIR\\\\Uninstall.exe\\\\\\\"\\\$\\\\\\\"\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\" \\\"UninstallString\\\" \\\"$INSTDIR\\\\Uninstall.exe\\\"
             "
         )
         
         SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-            ; Delete installation registry keys for this path
-            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$INSTDIR\\\"
-            
-            ; Check if there are any other installations left
-            EnumRegKey \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\" 0
-            StrCmp \\\$R0 \\\"\\\" 0 +2
-            ; No more installations, remove the parent key
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\$INSTDIR\\\"
+            EnumRegKey $R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\" 0
+            StrCmp $R0 \\\"\\\" 0 +2
             DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\"
             "
         )
