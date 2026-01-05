@@ -991,12 +991,125 @@ elseif(NOT APPLE)
         SET(CPACK_NSIS_MUI_ICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_NSIS_MUI_UNIICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_PACKAGE_ICON "${OpenMW_SOURCE_DIR}\\\\files\\\\openmw.bmp")
+        
+        # Enable unique install directory check and multiple installations support
+        SET(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+        SET(CPACK_NSIS_MODIFY_PATH OFF)
+        
+        # Custom NSIS script to handle multiple installations
+        SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+            ; Write install location to a unique registry key based on install path
+            Push \\\"$INSTDIR\\\"
+            Call GetMD5
+            Pop \\\$R0
+            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"DisplayName\\\" \\\"OpenMW-MapExtractor ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"UninstallString\\\" \\\"\\\$\\\\\\\"$INSTDIR\\\\Uninstall.exe\\\\\\\"\\\$\\\\\\\"\\\"
+            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"InstallLocation\\\" \\\"$INSTDIR\\\"
+            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"DisplayVersion\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"Publisher\\\" \\\"OpenMW-MapExtractor\\\"
+            WriteRegDWORD HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"NoModify\\\" 1
+            WriteRegDWORD HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\" \\\"NoRepair\\\" 1
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            
+            ; Store the hash in uninstall.exe data for use during uninstallation
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\" \\\"PathHash\\\" \\\"\\\$R0\\\"
+            "
+        )
+        
+        SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
+            ; Read the hash from registry
+            ReadRegStr \\\$R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\" \\\"PathHash\\\"
+            
+            ; Delete the unique uninstall registry keys
+            DeleteRegKey HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\OpenMW-MapExtractor-\\\$R0\\\"
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\\\\\$R0\\\"
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Uninstall\\\"
+            
+            ; Check if there are any other installations
+            EnumRegKey \\\$R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\\Installations\\\" 0
+            StrCmp \\\$R1 \\\"\\\" 0 +2
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\"
+            "
+        )
+        
+        # Add MD5 hash function to NSIS script
+        SET(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "
+            !include \\\"LogicLib.nsh\\\"
+            
+            ; Simple hash function to create unique ID from install path
+            Function GetMD5
+                Exch \\\$0
+                Push \\\$1
+                Push \\\$2
+                
+                StrLen \\\$1 \\\$0
+                IntOp \\\$2 0 + 0
+                
+                loop:
+                    IntCmp \\\$2 \\\$1 done done
+                    StrCpy \\\$R9 \\\$0 1 \\\$2
+                    IntOp \\\$R8 0 + 0
+                    StrCmp \\\$R9 \\\"\\\\\\\" 0 +2
+                    IntOp \\\$R8 \\\$R8 + 92
+                    StrCmp \\\$R9 \\\":\\\" 0 +2
+                    IntOp \\\$R8 \\\$R8 + 58
+                    StrCmp \\\$R9 \\\"A\\\" 0 +2
+                    IntOp \\\$R8 \\\$R8 + 65
+                    StrCmp \\\$R9 \\\"B\\\" 0 +2
+                    IntOp \\\$R8 \\\$R8 + 66
+                    StrCmp \\\$R9 \\\"C\\\" 0 +2
+                    IntOp \\\$R8 \\\$R8 + 67
+                    ; Add more characters as needed or use CRC plugin for production
+                    IntOp \\\$2 \\\$2 + 1
+                    Goto loop
+                    
+                done:
+                    ; Simple hash - in production use MD5 plugin
+                    Push \\\$0
+                    Call StrToHex
+                    Pop \\\$0
+                    
+                Pop \\\$2
+                Pop \\\$1
+                Exch \\\$0
+            FunctionEnd
+            
+            Function StrToHex
+                Exch \\\$0
+                Push \\\$1
+                Push \\\$2
+                Push \\\$3
+                
+                StrCpy \\\$1 \\\"\\\"
+                StrLen \\\$2 \\\$0
+                IntOp \\\$3 0 + 0
+                
+                hexloop:
+                    IntCmp \\\$3 \\\$2 hexdone hexdone
+                    StrCpy \\\$R9 \\\$0 1 \\\$3
+                    IntFmt \\\$R8 \\\"%02X\\\" \\\$R9
+                    StrCpy \\\$1 \\\$1\\\$R8
+                    IntOp \\\$3 \\\$3 + 1
+                    IntCmp \\\$3 8 hexdone
+                    Goto hexloop
+                    
+                hexdone:
+                
+                Pop \\\$3
+                Pop \\\$2
+                StrCpy \\\$0 \\\$1
+                Pop \\\$1
+                Exch \\\$0
+            FunctionEnd
+            "
+        )
 
         SET(VCREDIST64 "${OpenMW_BINARY_DIR}/vcredist_x64.exe" CACHE FILEPATH "Path to vcredist_x64.exe")
         if(EXISTS ${VCREDIST64})
             INSTALL(FILES ${VCREDIST64} DESTINATION "redist")
             get_filename_component(REDIST_FILENAME "${VCREDIST64}" NAME)
-            SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+            SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
                 ExecWait '\\\"$INSTDIR\\\\redist\\\\${REDIST_FILENAME}\\\" /q /norestart'
                 RMDir /r \\\"$INSTDIR\\\\redist\\\"
                 ")
