@@ -371,6 +371,16 @@ namespace MWLua
                 "generateTileWorldMapAction");
         };
 
+        api["setWorldMapOutputPath"] = [lua = context.mLua](const std::string& path) {
+            checkGameInitialized(lua);
+            MWBase::Environment::get().getWorld()->setWorldMapOutputPath(path);
+        };
+
+        api["setLocalMapOutputPath"] = [lua = context.mLua](const std::string& path) {
+            checkGameInitialized(lua);
+            MWBase::Environment::get().getWorld()->setLocalMapOutputPath(path);
+        };
+
         return LuaUtil::makeReadOnly(api);
     }
 }

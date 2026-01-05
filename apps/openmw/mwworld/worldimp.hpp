@@ -115,6 +115,7 @@ namespace MWWorld
         bool mScriptsEnabled;
         bool mDiscardMovements;
         std::vector<std::string> mContentFiles;
+        std::vector<std::string> mOriginalContentFiles; // Includes .omwscripts files before filtering
 
         std::filesystem::path mUserDataPath;
 
@@ -698,6 +699,9 @@ namespace MWWorld
 
         void saveToLocalMapDir(std::string_view filename, std::string_view stringData) override;
         void generateTileWorldMap(const osg::Vec3f& backgroundColor) override;
+        
+        void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
+        void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }
 
     private:
         bool mGeneratingTileWorldMap = false;

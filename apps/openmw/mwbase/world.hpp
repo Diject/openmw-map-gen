@@ -630,6 +630,12 @@ namespace MWBase
 
         virtual void generateTileWorldMap(const osg::Vec3f& backgroundColor) = 0;
         ///< Generate a tiled world map from local map tiles with the specified background color
+        
+        virtual void setWorldMapOutputPath(const std::string& path) = 0;
+        ///< Set the world map output path
+        
+        virtual void setLocalMapOutputPath(const std::string& path) = 0;
+        ///< Set the local map output path
     };
 }
 
