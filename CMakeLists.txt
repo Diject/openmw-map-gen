@@ -1011,9 +1011,14 @@ elseif(NOT APPLE)
             uninstall_old:
                 ReadRegStr $R5 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"UninstallString\\\"
                 ExecWait '\\\"$R5\\\" /S _?=$R3' $R6
-                StrCmp $R6 0 check_current_dir
+                StrCmp $R6 0 cleanup_old_dir
                 MessageBox MB_OK \\\"Failed to uninstall previous version. Please uninstall manually.\\\"
                 Abort
+            
+            cleanup_old_dir:
+                Delete \\\"$R3\\\\Uninstall.exe\\\"
+                RMDir \\\"$R3\\\"
+                Goto check_current_dir
             
             check_current_dir:
                 ReadRegStr $R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"Version\\\"
