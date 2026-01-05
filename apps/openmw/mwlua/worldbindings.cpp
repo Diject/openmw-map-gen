@@ -381,6 +381,14 @@ namespace MWLua
             MWBase::Environment::get().getWorld()->setLocalMapOutputPath(path);
         };
 
+        api["getContentFileDir"] = [lua = context.mLua](const std::string& contentFile) -> sol::object {
+            checkGameInitialized(lua);
+            std::string dir = MWBase::Environment::get().getWorld()->getContentFileDir(contentFile);
+            if (dir.empty())
+                return sol::nil;
+            return sol::make_object(lua->unsafeState(), dir);
+        };
+
         return LuaUtil::makeReadOnly(api);
     }
 }

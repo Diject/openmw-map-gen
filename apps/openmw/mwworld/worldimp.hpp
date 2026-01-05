@@ -126,7 +126,7 @@ namespace MWWorld
         std::string mLocalMapOutputPath;
         bool mOverwriteMaps;
         int mTilemapDownscaleFactor;
-
+        std::map<std::string, std::filesystem::path> mContentFileDirs;
         float mSwimHeightScale;
 
         float mDistanceToFocusObject;
@@ -203,7 +203,7 @@ namespace MWWorld
         void removeContainerScripts(const Ptr& reference) override;
 
         World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-            const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor);
+            const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, const std::map<std::string, std::filesystem::path>& contentFileDirs = {});
 
         void loadData(const Files::Collections& fileCollections, const std::vector<std::string>& contentFiles,
             const std::vector<std::string>& groundcoverFiles, ToUTF8::Utf8Encoder* encoder,
@@ -702,6 +702,8 @@ namespace MWWorld
         
         void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
         void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }
+        
+        std::string getContentFileDir(const std::string& contentFile) const override;
 
     private:
         bool mGeneratingTileWorldMap = false;

@@ -487,6 +487,8 @@ namespace MWBase
 
         virtual const std::vector<std::string>& getContentFiles() const = 0;
 
+        virtual std::string getContentFileDir(const std::string& contentFile) const = 0;
+
         virtual void breakInvisibility(const MWWorld::Ptr& actor) = 0;
 
         // Allow NPCs to use torches?

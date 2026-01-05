@@ -110,6 +110,23 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
         Log(Debug::Error) << "No content file given (esm/esp, nor omwgame/omwaddon). Aborting...";
         return false;
     }
+    
+    // Store content file directories before filtering
+    std::map<std::string, std::filesystem::path> contentFileDirs;
+    for (const auto& contentFile : content)
+    {
+        for (const auto& dataDir : dataDirs)
+        {
+            std::filesystem::path contentPath = dataDir / contentFile;
+            if (std::filesystem::exists(contentPath))
+            {
+                contentFileDirs[contentFile] = dataDir;
+                break;
+            }
+        }
+    }
+    engine.setContentFileDirs(contentFileDirs);
+    
     engine.addContentFile("builtin.omwscripts");
     std::set<std::string> contentDedupe{ "builtin.omwscripts" };
     for (const auto& contentFile : content)
