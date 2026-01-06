@@ -840,7 +840,7 @@ void OMW::Engine::prepareEngine()
     // Create the world
     mWorld = std::make_unique<MWWorld::World>(
         mResourceSystem.get(), mActivationDistanceOverride, mCellName, mCfgMgr.getUserDataPath(),
-        mWorldMapOutput, mLocalMapOutput, mOverwriteMaps, mTilemapDownscaleFactor);
+        mWorldMapOutput, mLocalMapOutput, mOverwriteMaps, mTilemapDownscaleFactor, mContentFileDirs);
     mEnvironment.setWorld(*mWorld);
     mEnvironment.setWorldModel(mWorld->getWorldModel());
     mEnvironment.setESMStore(mWorld->getStore());
@@ -1170,4 +1170,9 @@ void OMW::Engine::setOverwriteMaps(bool overwrite)
 void OMW::Engine::setTilemapDownscaleFactor(int factor)
 {
     mTilemapDownscaleFactor = factor;
+}
+
+void OMW::Engine::setContentFileDirs(const std::map<std::string, std::filesystem::path>& dirs)
+{
+    mContentFileDirs = dirs;
 }
