@@ -255,7 +255,7 @@ namespace MWWorld
     }
 
     World::World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor)
+        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, const std::map<std::string, std::filesystem::path>& contentFileDirs)
         : mResourceSystem(resourceSystem)
         , mLocalScripts(mStore)
         , mWorldModel(mStore, mReaders)
@@ -271,6 +271,7 @@ namespace MWWorld
         , mLocalMapOutputPath(localMapOutputPath)
         , mOverwriteMaps(overwriteMaps)
         , mTilemapDownscaleFactor(tilemapDownscaleFactor)
+        , mContentFileDirs(contentFileDirs)
         , mSwimHeightScale(0.f)
         , mDistanceToFocusObject(-1.f)
         , mTeleportEnabled(true)
@@ -4007,6 +4008,16 @@ namespace MWWorld
         {
             throw std::runtime_error("Failed to write to file: " + filePath.string());
         }
+    }
+
+    std::string World::getContentFileDir(const std::string& contentFile) const
+    {
+        auto it = mContentFileDirs.find(contentFile);
+        if (it != mContentFileDirs.end())
+        {
+            return Files::pathToUnicodeString(it->second);
+        }
+        return "";
     }
 
     void World::generateTileWorldMap(const osg::Vec3f& backgroundColor)

@@ -52,7 +52,7 @@ local function generateTilemap()
     local pl = world.players[1]
     pl:sendEvent("builtin:map_extractor:updateMenu", {
         line1 = "Generating tile world map...",
-        line2 = "The game may freeze for a short time.",
+        line2 = "The game may freeze for a while.",
         line3 = "",
     })
 
@@ -142,9 +142,9 @@ local function processAndTeleport(skipExtraction)
 end
 
 
-async:newUnsavableSimulationTimer(0.1, function ()
+local function start()
     local pl = world.players[1]
-    pl:sendEvent("builtin:map_extractor:updateMenu", {line1 = "Generating world map..."})
+    pl:sendEvent("builtin:map_extractor:updateMenu", {line1 = "Generating world map...", btnVisibility = false})
     world.enableExtractionMode()
     types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Controls, false)
     types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Fighting, false)
@@ -165,6 +165,20 @@ async:newUnsavableSimulationTimer(0.1, function ()
 
         processAndTeleport(true)
     end)
+end
+
+
+async:newUnsavableSimulationTimer(0.1, function ()
+    local advancedMapDir = world.getContentFileDir("Advanced World Map.omwscripts")
+    if advancedMapDir then
+        world.players[1]:sendEvent("builtin:map_extractor:updateMenu", {
+            line1 = "Found \"Advanced World Map\" mod. Would you like to extract map images to its directory?",
+            line2 = "", line3 = "",
+            btnVisibility = true,
+        })
+    else
+        start()
+    end
 end)
 
 
@@ -173,6 +187,19 @@ return {
     eventHandlers = {
         ["builtin:map_extractor:teleport"] = function (pl)
             processAndTeleport()
+        end,
+
+        ["builtin:map_extractor:yesBtn"] = function ()
+            local advancedMapDir = world.getContentFileDir("Advanced World Map.omwscripts")
+            if advancedMapDir then
+                world.setWorldMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/custom/")
+                world.setLocalMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/local/")
+            end
+            start()
+        end,
+
+        ["builtin:map_extractor:noBtn"] = function ()
+            start()
         end,
     }
 }
