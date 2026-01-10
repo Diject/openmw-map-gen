@@ -361,5 +361,32 @@
 -- -- - tilemap.png: The composite world map image
 -- -- - tilemapInfo.yaml: Metadata including dimensions, grid bounds, and pixels per cell
 
+---
+-- Get launch parameters passed from command line and configuration files.
+-- Returns a table containing all custom launch parameters that were passed to OpenMW.
+-- These parameters can be used to pass custom configuration data to Lua scripts.
+-- The parameters are collected from command line arguments and configuration files during engine initialization.
+-- @function [parent=#world] getLaunchParameters
+-- @return #table Table with parameter names as keys and their values as strings
+-- @usage
+-- -- Get all launch parameters
+-- local params = world.getLaunchParameters()
+-- for key, value in pairs(params) do
+--   print("Parameter: " .. key .. " = " .. value)
+-- end
+-- 
+-- -- Check for a specific parameter
+-- local params = world.getLaunchParameters()
+-- if params["custom_mode"] then
+--   print("Custom mode is: " .. params["custom_mode"])
+-- end
+-- 
+-- -- Use parameters to control script behavior
+-- local params = world.getLaunchParameters()
+-- if params["debug_mode"] == "true" then
+--   -- Enable debug logging
+--   print("Debug mode enabled")
+-- end
+
 return nil
 

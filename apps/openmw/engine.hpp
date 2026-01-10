@@ -188,6 +188,7 @@ namespace OMW
         bool mOverwriteMaps;
         int mTilemapDownscaleFactor;
         std::map<std::string, std::filesystem::path> mContentFileDirs;
+        std::map<std::string, std::string> mLaunchParameters;
 
         Files::ConfigurationManager& mCfgMgr;
         int mGlMaxTextureImageUnits;
@@ -281,6 +282,9 @@ namespace OMW
         void setRecastMaxLogLevel(Debug::Level value) { mMaxRecastLogLevel = value; }
 
         void setContentFileDirs(const std::map<std::string, std::filesystem::path>& dirs);
+
+        void setLaunchParameters(const std::map<std::string, std::string>& params);
+        const std::map<std::string, std::string>& getLaunchParameters() const { return mLaunchParameters; }
     };
 }
 

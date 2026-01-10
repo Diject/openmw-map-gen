@@ -382,14 +382,28 @@ namespace MWLua
             MWBase::Environment::get().getWorld()->setLocalMapOutputPath(path);
         };
 
-        api["getContentFileDir"] = [lua = context.mLua](const std::string& contentFile) -> sol::object {
-            checkGameInitialized(lua);
-            std::string dir = MWBase::Environment::get().getWorld()->getContentFileDir(contentFile);
-            if (dir.empty())
-                return sol::nil;
-            return sol::make_object(lua->unsafeState(), dir);
-        };
+    api["getContentFileDir"] = [lua = context.mLua](const std::string& contentFile) -> sol::object {
+        checkGameInitialized(lua);
+        std::string dir = MWBase::Environment::get().getWorld()->getContentFileDir(contentFile);
+        if (dir.empty())
+            return sol::nil;
+        return sol::make_object(lua->unsafeState(), dir);
+    };
 
-        return LuaUtil::makeReadOnly(api);
+    api["getLaunchParameters"] = [lua = context.mLua](sol::this_state luaState) -> sol::table {
+        checkGameInitialized(lua);
+        sol::state_view state(luaState);
+        sol::table result = state.create_table();
+        
+        const auto& params = MWBase::Environment::get().getWorld()->getLaunchParameters();
+        for (const auto& [key, value] : params)
+        {
+            result[key] = value;
+        }
+        
+        return result;
+    };
+
+    return LuaUtil::makeReadOnly(api);
     }
 }

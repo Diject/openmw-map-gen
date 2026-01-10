@@ -639,6 +639,9 @@ namespace MWBase
         
         virtual void setLocalMapOutputPath(const std::string& path) = 0;
         ///< Set the local map output path
+        
+        virtual const std::map<std::string, std::string>& getLaunchParameters() const = 0;
+        ///< Get launch parameters from command line and configuration files
     };
 }
 

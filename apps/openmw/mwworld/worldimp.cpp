@@ -4020,6 +4020,11 @@ namespace MWWorld
         return "";
     }
 
+    const std::map<std::string, std::string>& World::getLaunchParameters() const
+    {
+        return MWBase::Environment::get().getLaunchParameters();
+    }
+
     void World::generateTileWorldMap(const osg::Vec3f& backgroundColor)
     {
         if (mTilemapDownscaleFactor <= 0)

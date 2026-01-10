@@ -703,6 +703,8 @@ namespace MWWorld
         void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
         void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }
         
+        const std::map<std::string, std::string>& getLaunchParameters() const override;
+        
         std::string getContentFileDir(const std::string& contentFile) const override;
 
     private:
