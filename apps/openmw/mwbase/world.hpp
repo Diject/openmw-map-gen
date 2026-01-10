@@ -618,8 +618,9 @@ namespace MWBase
         virtual bool getOverwriteMaps() const = 0;
         ///< Get the overwrite maps flag
 
-        virtual void extractWorldMap() = 0;
+        virtual void extractWorldMap(int cellSize = 32) = 0;
         ///< Extract world map using path from options or default
+        ///< @param cellSize Size of each cell in pixels (default: 32)
 
         virtual void extractLocalMaps(bool playerCellOnly = false) = 0;
         ///< Extract local maps using path from options or default

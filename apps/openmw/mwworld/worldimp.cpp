@@ -3921,14 +3921,14 @@ namespace MWWorld
             actor->setActive(value);
     }
 
-    void World::extractWorldMap()
+    void World::extractWorldMap(int cellSize)
     {
         if (!mMapExtractor)
         {
             mMapExtractor = std::make_unique<OMW::MapExtractor>(
                 mWorldMapOutputPath, mLocalMapOutputPath, mOverwriteMaps, mRendering.get(), &mStore);
         }
-        mMapExtractor->extractWorldMap();
+        mMapExtractor->extractWorldMap(cellSize);
     }
 
     void World::extractLocalMaps(bool playerCellOnly)

@@ -94,7 +94,7 @@ namespace OMW
 
     MapExtractor::~MapExtractor() = default;
 
-    void MapExtractor::extractWorldMap()
+    void MapExtractor::extractWorldMap(int cellSize)
     {
         Log(Debug::Info) << "Extracting world map...";
 
@@ -113,9 +113,9 @@ namespace OMW
             throw std::runtime_error("Global map not initialized");
         }
 
-        // Temporarily set cell size to 32 pixels for extraction
+        // Temporarily set cell size for extraction
         const int originalCellSize = Settings::map().mGlobalMapCellSize;
-        Settings::map().mGlobalMapCellSize.set(32);
+        Settings::map().mGlobalMapCellSize.set(cellSize);
 
         mGlobalMap->render();
         mGlobalMap->ensureLoaded();
@@ -186,7 +186,7 @@ namespace OMW
 
         file << "width: " << width << "\n";
         file << "height: " << height << "\n";
-        file << "pixelsPerCell: 32\n";
+        file << "pixelsPerCell: " << Settings::map().mGlobalMapCellSize << "\n";
         file << "gridX:\n";
         file << "  min: " << minX << "\n";
         file << "  max: " << maxX << "\n";

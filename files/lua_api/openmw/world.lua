@@ -227,7 +227,11 @@
 -- The output directory is determined by --world-map-output command line option,
 -- or defaults to "./textures/advanced_world_map/custom" if not specified.
 -- @function [parent=#world] extractWorldMap
--- @usage world.extractWorldMap()  -- Use path from option or default
+-- @param #number cellSize (optional, 32 by default) Size of each cell in pixels. 
+--   Controls the resolution of the generated world map. Higher values produce larger, more detailed maps.
+-- @usage world.extractWorldMap()  -- Use default cell size (32 pixels)
+-- @usage world.extractWorldMap(64)  -- Use 64 pixels per cell for higher resolution
+-- @usage world.extractWorldMap(16)  -- Use 16 pixels per cell for lower resolution
 
 ---
 -- Extract local maps using path from --local-map-output option or default path.
