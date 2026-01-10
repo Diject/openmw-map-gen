@@ -4022,6 +4022,9 @@ namespace MWWorld
 
     void World::generateTileWorldMap(const osg::Vec3f& backgroundColor)
     {
+        if (mTilemapDownscaleFactor <= 0)
+            return;
+
         mGeneratingTileWorldMap = true;
         
         std::filesystem::path localMapPath(mLocalMapOutputPath);
