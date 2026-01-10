@@ -107,6 +107,12 @@ namespace OpenMW
         addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(-1),
             "downscale factor for tilemap generation (must be power of 2, default: -1 - disabled)");
 
+        addOption("world-map-pixelsPerCell", bpo::value<int>()->default_value(32),
+            "pixel size for one cell on the world map texture. [1-64]. Default: 32");
+
+        addOption("world-map-border", bpo::value<int>()->default_value(2),
+            "border size around territories above 0 on the world map texture. 0 - disabled. Default: 2");
+
         return desc;
     }
 }
