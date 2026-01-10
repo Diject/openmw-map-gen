@@ -3,6 +3,7 @@
 
 #include <components/misc/notnullptr.hpp>
 
+#include <map>
 #include <memory>
 
 namespace Resource
