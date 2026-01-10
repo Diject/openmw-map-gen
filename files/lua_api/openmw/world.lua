@@ -229,9 +229,14 @@
 -- @function [parent=#world] extractWorldMap
 -- @param #number cellSize (optional, 32 by default) Size of each cell in pixels. 
 --   Controls the resolution of the generated world map. Higher values produce larger, more detailed maps.
--- @usage world.extractWorldMap()  -- Use default cell size (32 pixels)
--- @usage world.extractWorldMap(64)  -- Use 64 pixels per cell for higher resolution
--- @usage world.extractWorldMap(16)  -- Use 16 pixels per cell for lower resolution
+-- @param #number borderWidth (optional, 0 by default) Width of borders around land areas (height >= 0) in pixels.
+--   If nil or <= 0, no borders are drawn. Increasing this value makes borders thicker.
+-- @usage world.extractWorldMap()  -- Use default cell size (32 pixels), no borders
+-- @usage world.extractWorldMap(64)  -- Use 64 pixels per cell, no borders
+-- @usage world.extractWorldMap(32, 1)  -- Default resolution with 1-pixel border
+-- @usage world.extractWorldMap(64, 2)  -- High resolution with 2-pixel border
+-- @usage world.extractWorldMap(32, 0)  -- Explicitly disable borders
+-- @usage world.extractWorldMap(32, nil)  -- nil also disables borders
 
 ---
 -- Extract local maps using path from --local-map-output option or default path.

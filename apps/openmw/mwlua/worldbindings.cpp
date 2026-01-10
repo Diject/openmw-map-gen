@@ -250,12 +250,13 @@ namespace MWLua
 
         api["vfx"] = initWorldVfxBindings(context);
 
-        api["extractWorldMap"] = [context, lua = context.mLua](sol::optional<int> cellSize) {
+        api["extractWorldMap"] = [context, lua = context.mLua](sol::optional<int> cellSize, sol::optional<int> borderWidth) {
             checkGameInitialized(lua);
             int size = cellSize.value_or(32);
+            int width = borderWidth.value_or(0);
             context.mLuaManager->addAction(
-                [size] {
-                    MWBase::Environment::get().getWorld()->extractWorldMap(size);
+                [size, width] {
+                    MWBase::Environment::get().getWorld()->extractWorldMap(size, width);
                 },
                 "extractWorldMapAction");
         };

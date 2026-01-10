@@ -94,7 +94,7 @@ namespace OMW
 
     MapExtractor::~MapExtractor() = default;
 
-    void MapExtractor::extractWorldMap(int cellSize)
+    void MapExtractor::extractWorldMap(int cellSize, int borderWidth)
     {
         Log(Debug::Info) << "Extracting world map...";
 
@@ -117,6 +117,7 @@ namespace OMW
         const int originalCellSize = Settings::map().mGlobalMapCellSize;
         Settings::map().mGlobalMapCellSize.set(cellSize);
 
+        mGlobalMap->setBorderWidth(borderWidth);
         mGlobalMap->render();
         mGlobalMap->ensureLoaded();
 
