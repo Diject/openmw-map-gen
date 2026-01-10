@@ -86,6 +86,7 @@ namespace OMW
         bool mForceOverwrite;
 
         void saveWorldMapTexture();
+        void saveWorldMapTextureBlocks();
         void saveWorldMapInfo();
         
         void startExtraction(const std::vector<const MWWorld::CellStore*>& activeCells);
