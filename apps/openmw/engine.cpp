@@ -1176,3 +1176,9 @@ void OMW::Engine::setContentFileDirs(const std::map<std::string, std::filesystem
 {
     mContentFileDirs = dirs;
 }
+
+void OMW::Engine::setLaunchParameters(const std::map<std::string, std::string>& params)
+{
+    mLaunchParameters = params;
+    mEnvironment.setLaunchParameters(params);
+}

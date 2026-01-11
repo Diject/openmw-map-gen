@@ -54,7 +54,7 @@ namespace OMW
 
         void setLocalMap(MWRender::LocalMap* localMap) { mLocalMap = localMap; }
 
-        void extractWorldMap();
+        void extractWorldMap(int cellSize = 32, int borderWidth = 0);
         void extractLocalMaps(const std::vector<const MWWorld::CellStore*>& activeCells);
         
         // Called every frame to process pending extractions
@@ -86,6 +86,7 @@ namespace OMW
         bool mForceOverwrite;
 
         void saveWorldMapTexture();
+        void saveWorldMapTextureBlocks();
         void saveWorldMapInfo();
         
         void startExtraction(const std::vector<const MWWorld::CellStore*>& activeCells);

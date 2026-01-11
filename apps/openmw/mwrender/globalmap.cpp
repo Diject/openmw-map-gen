@@ -33,6 +33,11 @@
 
 namespace
 {
+    struct Rgb24
+    {
+        uint8_t r, g, b;
+        Rgb24(uint8_t r_, uint8_t g_, uint8_t b_) : r(r_), g(g_), b(b_) {}
+    };
 
     // Create a screen-aligned quad with given texture coordinates.
     // Assumes a top-left origin of the sampled image.
@@ -127,7 +132,7 @@ namespace MWRender
     {
     public:
         CreateMapWorkItem(int width, int height, int minX, int minY, int maxX, int maxY, int cellSize,
-            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut)
+            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut, int borderWidth)
             : mWidth(width)
             , mHeight(height)
             , mMinX(minX)
@@ -137,6 +142,7 @@ namespace MWRender
             , mCellSize(cellSize)
             , mLandStore(landStore)
             , mColorLut(colorLut)
+            , mBorderWidth(borderWidth)
         {
         }
 
@@ -211,6 +217,70 @@ namespace MWRender
                 }
             }
 
+            // Draw borders if requested (borderWidth > 0)
+            if (mBorderWidth > 0)
+            {
+                // Create border mask - mark pixels at the edge of land/water boundary
+                std::vector<bool> borderMask(mWidth * mHeight, false);
+                
+                for (int y = 0; y < mHeight; ++y)
+                {
+                    for (int x = 0; x < mWidth; ++x)
+                    {
+                        // Check if this pixel is land (alpha >= 128)
+                        uint8_t alpha = alphaImage->data()[y * mWidth + x];
+                        if (alpha < 128)
+                            continue;
+                        
+                        // Check if any neighbor is water (alpha < 128)
+                        bool isBorder = false;
+                        if (x == 0 || alphaImage->data()[y * mWidth + (x - 1)] < 128)
+                            isBorder = true;
+                        else if (x == mWidth - 1 || alphaImage->data()[y * mWidth + (x + 1)] < 128)
+                            isBorder = true;
+                        else if (y == 0 || alphaImage->data()[(y - 1) * mWidth + x] < 128)
+                            isBorder = true;
+                        else if (y == mHeight - 1 || alphaImage->data()[(y + 1) * mWidth + x] < 128)
+                            isBorder = true;
+                        
+                        borderMask[y * mWidth + x] = isBorder;
+                    }
+                }
+                
+                // Apply border color (using highest LUT index for bright color)
+                osg::Vec4 borderColor = mColorLut->getColor(255, 0);
+                Rgb24 borderRgb(static_cast<uint8_t>(borderColor.r() * 255),
+                               static_cast<uint8_t>(borderColor.g() * 255),
+                               static_cast<uint8_t>(borderColor.b() * 255));
+                
+                // Apply borders with configurable thickness
+                const int stroke = mBorderWidth;
+                for (int y = 0; y < mHeight; ++y)
+                {
+                    for (int x = 0; x < mWidth; ++x)
+                    {
+                        if (!borderMask[y * mWidth + x])
+                            continue;
+                        
+                        int minX = std::max(0, x - stroke + 1);
+                        int maxX = std::min(mWidth - 1, x + stroke - 1);
+                        int minY = std::max(0, y - stroke + 1);
+                        int maxY = std::min(mHeight - 1, y + stroke - 1);
+                        
+                        for (int yy = minY; yy <= maxY; ++yy)
+                        {
+                            for (int xx = minX; xx <= maxX; ++xx)
+                            {
+                                unsigned char* pixel = image->data(xx, yy);
+                                pixel[0] = borderRgb.r;
+                                pixel[1] = borderRgb.g;
+                                pixel[2] = borderRgb.b;
+                            }
+                        }
+                    }
+                }
+            }
+
             mBaseTexture = new osg::Texture2D;
             mBaseTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
             mBaseTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
@@ -248,6 +318,7 @@ namespace MWRender
         int mCellSize;
         const MWWorld::Store<ESM::Land>& mLandStore;
         osg::ref_ptr<osg::Image> mColorLut;
+        int mBorderWidth;
 
         osg::ref_ptr<osg::Texture2D> mBaseTexture;
         osg::ref_ptr<osg::Texture2D> mAlphaTexture;
@@ -278,6 +349,7 @@ namespace MWRender
         , mMaxX(0)
         , mMinY(0)
         , mMaxY(0)
+        , mBorderWidth(0)
     {
     }
 
@@ -328,8 +400,13 @@ namespace MWRender
         }
 
         mWorkItem = new CreateMapWorkItem(
-            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), mColorLut);
+            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), mColorLut, mBorderWidth);
         mWorkQueue->addWorkItem(mWorkItem);
+    }
+
+    void GlobalMap::setBorderWidth(int borderWidth)
+    {
+        mBorderWidth = borderWidth;
     }
 
     void GlobalMap::worldPosToImageSpace(float x, float z, float& imageX, float& imageY)

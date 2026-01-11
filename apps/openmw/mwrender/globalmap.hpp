@@ -77,6 +77,8 @@ namespace MWRender
 
         osg::Vec3f getBackgroundColor() const;
 
+        void setBorderWidth(int borderWidth);
+
     private:
         struct WritePng;
 
@@ -134,6 +136,8 @@ namespace MWRender
         int mHeight;
 
         int mMinX, mMaxX, mMinY, mMaxY;
+        
+        int mBorderWidth;
     };
 
 }

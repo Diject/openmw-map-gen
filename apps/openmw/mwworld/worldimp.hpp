@@ -693,7 +693,7 @@ namespace MWWorld
         std::string getLocalMapOutputPath() const override { return mLocalMapOutputPath; }
         bool getOverwriteMaps() const override { return mOverwriteMaps; }
 
-        void extractWorldMap() override;
+        void extractWorldMap(int cellSize = 32, int borderWidth = 0) override;
         void extractLocalMaps(bool playerCellOnly = false) override;
         bool isMapExtractionActive() const override;
 
@@ -702,6 +702,8 @@ namespace MWWorld
         
         void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
         void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }
+        
+        const std::map<std::string, std::string>& getLaunchParameters() const override;
         
         std::string getContentFileDir(const std::string& contentFile) const override;
 

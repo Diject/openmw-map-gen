@@ -3,6 +3,7 @@
 
 #include <components/misc/notnullptr.hpp>
 
+#include <map>
 #include <memory>
 
 namespace Resource
@@ -60,6 +61,7 @@ namespace MWBase
         L10n::Manager* mL10nManager = nullptr;
         float mFrameRateLimit = 0;
         float mFrameDuration = 0;
+        std::map<std::string, std::string> mLaunchParameters;
 
     public:
         Environment();
@@ -131,6 +133,10 @@ namespace MWBase
         float getFrameDuration() const { return mFrameDuration; }
 
         void setFrameDuration(float value) { mFrameDuration = value; }
+
+        void setLaunchParameters(const std::map<std::string, std::string>& value) { mLaunchParameters = value; }
+
+        const std::map<std::string, std::string>& getLaunchParameters() const { return mLaunchParameters; }
 
         /// Return instance of this class.
         static const Environment& get()
