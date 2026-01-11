@@ -41,7 +41,9 @@ Command-line options (fork-specific)
 --world-map-output=""          Directory to save the world map texture. Default: `./textures/advanced_world_map/custom/`
 --local-map-output=""          Directory to save local map textures. Default: `./textures/advanced_world_map/local/`
 --overwrite-maps               Allow overwriting existing local map files. By default local maps are not overwritten.
---tilemap-downscale-factor=4   Downscale factor for tilemap generation (must be power of 2). Default: 4.
+--tilemap-downscale-factor=-1  If set to a positive integer N, enables generation of the world map texture based on local map tiles downscaled by a factor of N.
+--world-map-pixelsPerCell=32   The number of pixels per cell for the world map texture. Default: 32.
+--world-map-border=2           The number of pixels to add as a border around terrain above water level in the world map texture. Default: 2.
 ```
 
 Notes

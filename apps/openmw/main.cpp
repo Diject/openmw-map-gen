@@ -204,6 +204,44 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.setOverwriteMaps(variables["overwrite-maps"].as<bool>());
     engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
 
+    // Store launch parameters for Lua access
+    std::map<std::string, std::string> launchParams;
+    for (const auto& variable : variables)
+    {
+        const std::string& key = variable.first;
+        const auto& value = variable.second.value();
+        
+        if (value.type() == typeid(std::string))
+            launchParams[key] = boost::any_cast<std::string>(value);
+        else if (value.type() == typeid(int))
+            launchParams[key] = std::to_string(boost::any_cast<int>(value));
+        else if (value.type() == typeid(unsigned int))
+            launchParams[key] = std::to_string(boost::any_cast<unsigned int>(value));
+        else if (value.type() == typeid(bool))
+            launchParams[key] = boost::any_cast<bool>(value) ? "true" : "false";
+        else if (value.type() == typeid(float))
+            launchParams[key] = std::to_string(boost::any_cast<float>(value));
+        else if (value.type() == typeid(double))
+            launchParams[key] = std::to_string(boost::any_cast<double>(value));
+        else if (value.type() == typeid(Files::MaybeQuotedPath))
+            launchParams[key] = Files::pathToUnicodeString(boost::any_cast<Files::MaybeQuotedPath>(value));
+        else if (value.type() == typeid(StringsVector))
+        {
+            const auto& vec = boost::any_cast<StringsVector>(value);
+            if (!vec.empty())
+                launchParams[key] = vec.back(); // Use last value for multi-value parameters
+        }
+        else if (value.type() == typeid(Files::MaybeQuotedPathContainer))
+        {
+            const auto& container = boost::any_cast<Files::MaybeQuotedPathContainer>(value);
+            if (!container.empty())
+                launchParams[key] = Files::pathToUnicodeString(container.back());
+        }
+        else if (!variable.second.empty())
+            launchParams[key] = ""; // Parameter exists but has no convertible value
+    }
+    engine.setLaunchParameters(launchParams);
+
     return true;
 }
 

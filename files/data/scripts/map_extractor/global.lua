@@ -155,7 +155,11 @@ local function start()
     types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.ViewMode, false)
 
     async:newUnsavableSimulationTimer(0.1, function ()
-        world.extractWorldMap()
+        local parametes = world.getLaunchParameters()
+        local pixPerCell = tonumber(parametes["world-map-pixelsPerCell"]) or 32
+        local borderSize = tonumber(parametes["world-map-border"]) or 2
+
+        world.extractWorldMap(pixPerCell, borderSize)
 
         if not world.getOverwriteFlag() then
             for _, cellId in pairs(world.getExistingLocalMapIds() or {}) do

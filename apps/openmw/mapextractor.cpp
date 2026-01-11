@@ -94,7 +94,7 @@ namespace OMW
 
     MapExtractor::~MapExtractor() = default;
 
-    void MapExtractor::extractWorldMap()
+    void MapExtractor::extractWorldMap(int cellSize, int borderWidth)
     {
         Log(Debug::Info) << "Extracting world map...";
 
@@ -113,14 +113,16 @@ namespace OMW
             throw std::runtime_error("Global map not initialized");
         }
 
-        // Temporarily set cell size to 32 pixels for extraction
+        // Temporarily set cell size for extraction
         const int originalCellSize = Settings::map().mGlobalMapCellSize;
-        Settings::map().mGlobalMapCellSize.set(32);
+        Settings::map().mGlobalMapCellSize.set(cellSize);
 
+        mGlobalMap->setBorderWidth(borderWidth);
         mGlobalMap->render();
         mGlobalMap->ensureLoaded();
 
         saveWorldMapTexture();
+        saveWorldMapTextureBlocks();
         saveWorldMapInfo();
 
         // Restore original cell size
@@ -148,6 +150,162 @@ namespace OMW
         }
 
         Log(Debug::Info) << "Saved world map texture: " << outputPath;
+    }
+
+    void MapExtractor::saveWorldMapTextureBlocks()
+    {
+        osg::ref_ptr<osg::Texture2D> baseTexture = mGlobalMap->getBaseTexture();
+        if (!baseTexture || !baseTexture->getImage())
+        {
+            Log(Debug::Error) << "Failed to get world map base texture for block extraction";
+            return;
+        }
+
+        osg::Image* sourceImage = baseTexture->getImage();
+        int imageWidth = sourceImage->s();
+        int imageHeight = sourceImage->t();
+        int pixelFormat = sourceImage->getPixelFormat();
+        int dataType = sourceImage->getDataType();
+        int pixelSize = sourceImage->getPixelSizeInBits() / 8;
+
+        // Get grid bounds
+        int minX = std::numeric_limits<int>::max();
+        int maxX = std::numeric_limits<int>::min();
+        int minY = std::numeric_limits<int>::max();
+        int maxY = std::numeric_limits<int>::min();
+
+        MWWorld::Store<ESM::Cell>::iterator it = mStore->get<ESM::Cell>().extBegin();
+        for (; it != mStore->get<ESM::Cell>().extEnd(); ++it)
+        {
+            if (it->getGridX() < minX)
+                minX = it->getGridX();
+            if (it->getGridX() > maxX)
+                maxX = it->getGridX();
+            if (it->getGridY() < minY)
+                minY = it->getGridY();
+            if (it->getGridY() > maxY)
+                maxY = it->getGridY();
+        }
+
+        int pixelsPerCell = Settings::map().mGlobalMapCellSize;
+        
+        // Calculate block boundaries
+        auto getBlockCoord = [](int coord) -> int {
+            return coord < 0 ? (coord + 1) / 16 - 1 : coord / 16;
+        };
+
+        int minBlockX = getBlockCoord(minX);
+        int maxBlockX = getBlockCoord(maxX);
+        int minBlockY = getBlockCoord(minY);
+        int maxBlockY = getBlockCoord(maxY);
+
+        // Get background color
+        osg::Vec3f bgColor = mGlobalMap->getBackgroundColor();
+        unsigned char bgR = static_cast<unsigned char>(bgColor.x() * 255);
+        unsigned char bgG = static_cast<unsigned char>(bgColor.y() * 255);
+        unsigned char bgB = static_cast<unsigned char>(bgColor.z() * 255);
+
+        Log(Debug::Info) << "Saving world map blocks (" << (maxBlockX - minBlockX + 1) 
+                        << "x" << (maxBlockY - minBlockY + 1) << ")...";
+
+        int savedBlocksCount = 0;
+
+        // Process each 16x16 block
+        for (int blockX = minBlockX; blockX <= maxBlockX; ++blockX)
+        {
+            for (int blockY = minBlockY; blockY <= maxBlockY; ++blockY)
+            {
+                // Calculate block boundaries in cell coordinates
+                int blockStartX = blockX * 16;
+                int blockStartY = blockY * 16;
+                int blockEndX = blockStartX + 16 - 1;
+                int blockEndY = blockStartY + 16 - 1;
+
+                // Calculate pixel coordinates in source image
+                int pixelStartX = (blockStartX - minX) * pixelsPerCell;
+                int pixelStartY = (blockStartY - minY) * pixelsPerCell;
+                int blockWidth = 16 * pixelsPerCell;
+                int blockHeight = 16 * pixelsPerCell;
+
+                // Create block image
+                osg::ref_ptr<osg::Image> blockImage = new osg::Image;
+                blockImage->allocateImage(blockWidth, blockHeight, 1, pixelFormat, dataType);
+
+                // Fill with background color
+                unsigned char* blockData = blockImage->data();
+                for (int y = 0; y < blockHeight; ++y)
+                {
+                    for (int x = 0; x < blockWidth; ++x)
+                    {
+                        int idx = (y * blockWidth + x) * pixelSize;
+                        blockData[idx] = bgR;
+                        blockData[idx + 1] = bgG;
+                        blockData[idx + 2] = bgB;
+                        if (pixelSize == 4)
+                            blockData[idx + 3] = 255;
+                    }
+                }
+
+                // Copy relevant portion from source image
+                int copyStartX = std::max(0, pixelStartX);
+                int copyStartY = std::max(0, pixelStartY);
+                int copyEndX = std::min(imageWidth - 1, pixelStartX + blockWidth - 1);
+                int copyEndY = std::min(imageHeight - 1, pixelStartY + blockHeight - 1);
+
+                bool hasNonBackgroundPixels = false;
+
+                if (copyStartX <= copyEndX && copyStartY <= copyEndY)
+                {
+                    for (int srcY = copyStartY; srcY <= copyEndY; ++srcY)
+                    {
+                        for (int srcX = copyStartX; srcX <= copyEndX; ++srcX)
+                        {
+                            int destX = srcX - pixelStartX;
+                            int destY = srcY - pixelStartY;
+
+                            if (destX >= 0 && destX < blockWidth && destY >= 0 && destY < blockHeight)
+                            {
+                                unsigned char* srcPixel = sourceImage->data(srcX, srcY);
+                                unsigned char* destPixel = blockImage->data(destX, destY);
+                                
+                                for (int c = 0; c < pixelSize; ++c)
+                                {
+                                    destPixel[c] = srcPixel[c];
+                                }
+
+                                // Check if this pixel differs from background color
+                                if (!hasNonBackgroundPixels)
+                                {
+                                    if (srcPixel[0] != bgR || srcPixel[1] != bgG || srcPixel[2] != bgB)
+                                    {
+                                        hasNonBackgroundPixels = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Only save block if it contains non-background pixels
+                if (hasNonBackgroundPixels)
+                {
+                    std::ostringstream filename;
+                    filename << "(" << blockX << "," << blockY << ").png";
+                    std::filesystem::path outputPath = mWorldMapOutputDir / filename.str();
+
+                    if (!osgDB::writeImageFile(*blockImage, outputPath.string()))
+                    {
+                        Log(Debug::Warning) << "Failed to write world map block (" << blockX << "," << blockY << ") to " << outputPath;
+                    }
+                    else
+                    {
+                        savedBlocksCount++;
+                    }
+                }
+            }
+        }
+
+        Log(Debug::Info) << "Saved " << savedBlocksCount << " world map blocks (skipped empty blocks)";
     }
 
     void MapExtractor::saveWorldMapInfo()
@@ -183,10 +341,17 @@ namespace OMW
         }
 
         osg::Vec3f bgColor = mGlobalMap->getBackgroundColor();
+        
+        // Get current timestamp
+        auto now = std::chrono::system_clock::now();
+        auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+            now.time_since_epoch()).count();
 
+        file << "version: 2\n";
+        file << "time: " << timestamp << "\n";
         file << "width: " << width << "\n";
         file << "height: " << height << "\n";
-        file << "pixelsPerCell: 32\n";
+        file << "pixelsPerCell: " << Settings::map().mGlobalMapCellSize << "\n";
         file << "gridX:\n";
         file << "  min: " << minX << "\n";
         file << "  max: " << maxX << "\n";

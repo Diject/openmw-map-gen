@@ -227,7 +227,16 @@
 -- The output directory is determined by --world-map-output command line option,
 -- or defaults to "./textures/advanced_world_map/custom" if not specified.
 -- @function [parent=#world] extractWorldMap
--- @usage world.extractWorldMap()  -- Use path from option or default
+-- @param #number cellSize (optional, 32 by default) Size of each cell in pixels. 
+--   Controls the resolution of the generated world map. Higher values produce larger, more detailed maps.
+-- @param #number borderWidth (optional, 0 by default) Width of borders around land areas (height >= 0) in pixels.
+--   If nil or <= 0, no borders are drawn. Increasing this value makes borders thicker.
+-- @usage world.extractWorldMap()  -- Use default cell size (32 pixels), no borders
+-- @usage world.extractWorldMap(64)  -- Use 64 pixels per cell, no borders
+-- @usage world.extractWorldMap(32, 1)  -- Default resolution with 1-pixel border
+-- @usage world.extractWorldMap(64, 2)  -- High resolution with 2-pixel border
+-- @usage world.extractWorldMap(32, 0)  -- Explicitly disable borders
+-- @usage world.extractWorldMap(32, nil)  -- nil also disables borders
 
 ---
 -- Extract local maps using path from --local-map-output option or default path.
@@ -356,6 +365,33 @@
 -- -- This will create:
 -- -- - tilemap.png: The composite world map image
 -- -- - tilemapInfo.yaml: Metadata including dimensions, grid bounds, and pixels per cell
+
+---
+-- Get launch parameters passed from command line and configuration files.
+-- Returns a table containing all custom launch parameters that were passed to OpenMW.
+-- These parameters can be used to pass custom configuration data to Lua scripts.
+-- The parameters are collected from command line arguments and configuration files during engine initialization.
+-- @function [parent=#world] getLaunchParameters
+-- @return #table Table with parameter names as keys and their values as strings
+-- @usage
+-- -- Get all launch parameters
+-- local params = world.getLaunchParameters()
+-- for key, value in pairs(params) do
+--   print("Parameter: " .. key .. " = " .. value)
+-- end
+-- 
+-- -- Check for a specific parameter
+-- local params = world.getLaunchParameters()
+-- if params["custom_mode"] then
+--   print("Custom mode is: " .. params["custom_mode"])
+-- end
+-- 
+-- -- Use parameters to control script behavior
+-- local params = world.getLaunchParameters()
+-- if params["debug_mode"] == "true" then
+--   -- Enable debug logging
+--   print("Debug mode enabled")
+-- end
 
 return nil
 
