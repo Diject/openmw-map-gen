@@ -8,6 +8,7 @@
 #include <span>
 #include <string_view>
 #include <vector>
+#include <map>
 
 #include <components/misc/rng.hpp>
 #include <components/vfs/pathutil.hpp>
