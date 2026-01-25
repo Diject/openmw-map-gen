@@ -42,6 +42,8 @@ jobs:
         -D MYGUI_STATIC=ON
         -D OPENMW_USE_SYSTEM_OSG=OFF
         -D OSG_STATIC=ON
+        -D OPENMW_USE_SYSTEM_RECASTNAVIGATION=OFF
+        -D RECASTNAVIGATION_STATIC=ON
 
     - name: Build
       run: cmake --build . -- -j$(nproc)
@@ -77,6 +79,7 @@ jobs:
         cp LICENSE openmw-linux/
         cp AUTHORS.md openmw-linux/
         cp CHANGELOG.md openmw-linux/
+        cp install-deps.sh openmw-linux/
 
     - name: Create Artifact
       shell: bash
