@@ -18,7 +18,9 @@ jobs:
       run: sudo add-apt-repository ppa:openmw/openmw; sudo apt-get update
 
     - name: Install Building Dependencies
-      run: sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
+      run: |
+        sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-static
+        sudo apt-get install -y libfreetype6-dev
 
     - name: Prime ccache
       uses: hendrikmuhs/ccache-action@v1
@@ -36,6 +38,8 @@ jobs:
         -D BUILD_OPENMW_TESTS=ON
         -D BUILD_OPENCS_TESTS=ON
         -D CMAKE_INSTALL_PREFIX=.
+        -D OPENMW_USE_SYSTEM_MYGUI=OFF
+        -D MYGUI_STATIC=ON
 
     - name: Build
       run: cmake --build . -- -j$(nproc)
