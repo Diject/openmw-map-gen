@@ -19,7 +19,7 @@ jobs:
 
     - name: Install Building Dependencies
       run: |
-        sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-static openmw-deps-dynamic
+        sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-static
         sudo apt-get install -y libfreetype6-dev
 
     - name: Prime ccache
@@ -40,6 +40,8 @@ jobs:
         -D CMAKE_INSTALL_PREFIX=.
         -D OPENMW_USE_SYSTEM_MYGUI=OFF
         -D MYGUI_STATIC=ON
+        -D OPENMW_USE_SYSTEM_OSG=OFF
+        -D OSG_STATIC=ON
 
     - name: Build
       run: cmake --build . -- -j$(nproc)
