@@ -12,6 +12,7 @@ local lastTimestamp = core.getRealTime() - 50
 local timeFromLast = 50
 local onlyPlayerCell = true
 
+local step = 0
 
 local function getExCellId(gridX, gridY)
     return string.format("(%d,%d)", gridX, gridY)
@@ -143,6 +144,7 @@ end
 
 
 local function start()
+    step = 3
     local pl = world.players[1]
     pl:sendEvent("builtin:map_extractor:updateMenu", {line1 = "Generating world map...", btnVisibility = false})
     world.enableExtractionMode()
@@ -172,17 +174,32 @@ local function start()
 end
 
 
-async:newUnsavableSimulationTimer(0.1, function ()
+local function doStep()
     local advancedMapDir = world.getContentFileDir("Advanced World Map.omwscripts")
-    if advancedMapDir then
+    if step == 0 and advancedMapDir then
+        step = 1
         world.players[1]:sendEvent("builtin:map_extractor:updateMenu", {
             line1 = "Found \"Advanced World Map\" mod. Would you like to extract map images to its directory?",
+            line2 = "", line3 = "",
+            btnVisibility = true,
+        })
+
+    elseif step <= 1 and world.getLaunchParameters()["overwrite-maps"] ~= "true" and
+            next(world.getExistingLocalMapIds() or {}) then
+        step = 2
+        world.players[1]:sendEvent("builtin:map_extractor:updateMenu", {
+            line1 = "Existing local map textures detected. Do you want to overwrite them?",
             line2 = "", line3 = "",
             btnVisibility = true,
         })
     else
         start()
     end
+end
+
+
+async:newUnsavableSimulationTimer(0.1, function ()
+    doStep()
 end)
 
 
@@ -194,16 +211,25 @@ return {
         end,
 
         ["builtin:map_extractor:yesBtn"] = function ()
-            local advancedMapDir = world.getContentFileDir("Advanced World Map.omwscripts")
-            if advancedMapDir then
-                world.setWorldMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/custom/")
-                world.setLocalMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/local/")
+            if step == 1 then
+                local advancedMapDir = world.getContentFileDir("Advanced World Map.omwscripts")
+                if advancedMapDir then
+                    world.setWorldMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/custom/")
+                    world.setLocalMapOutputPath(advancedMapDir .. "/textures/advanced_world_map/local/")
+                end
+                doStep()
+            elseif step == 2 then
+                world.setLaunchParameter("overwrite-maps", true)
+                start()
             end
-            start()
         end,
 
         ["builtin:map_extractor:noBtn"] = function ()
-            start()
+            if step == 1 then
+                doStep()
+            elseif step == 2 then
+                start()
+            end
         end,
     }
 }

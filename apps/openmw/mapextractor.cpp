@@ -37,13 +37,12 @@
 namespace OMW
 {
     MapExtractor::MapExtractor(const std::string& worldMapOutput, const std::string& localMapOutput,
-        bool forceOverwrite, MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store)
+        MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store)
         : mWorldMapOutputDir(worldMapOutput)
         , mLocalMapOutputDir(localMapOutput)
         , mRenderingManager(renderingManager)
         , mStore(store)
         , mLocalMap(nullptr)
-        , mForceOverwrite(forceOverwrite)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
@@ -415,7 +414,9 @@ namespace OMW
                 filename << "(" << x << "," << y << ").png";
                 std::filesystem::path outputPath = mLocalMapOutputDir / filename.str();
 
-                if (!mForceOverwrite && std::filesystem::exists(outputPath))
+                // Check current overwrite flag from World (which checks LaunchParameters)
+                bool shouldOverwrite = MWBase::Environment::get().getWorld()->getOverwriteMaps();
+                if (!shouldOverwrite && std::filesystem::exists(outputPath))
                 {
                     Log(Debug::Info) << "Skipping cell (" << x << "," << y << ") - file already exists";
                     continue;
@@ -450,7 +451,9 @@ namespace OMW
                 std::filesystem::path texturePath = mLocalMapOutputDir / (lowerCaseId + ".png");
                 std::filesystem::path yamlPath = mLocalMapOutputDir / (lowerCaseId + ".yaml");
 
-                if (!mForceOverwrite && std::filesystem::exists(yamlPath))
+                // Check current overwrite flag from World (which checks LaunchParameters)
+                bool shouldOverwrite = MWBase::Environment::get().getWorld()->getOverwriteMaps();
+                if (!shouldOverwrite && std::filesystem::exists(yamlPath))
                 {
                     Log(Debug::Info) << "Skipping interior cell: " << cellName << " - files already exist";
                     continue;
@@ -618,13 +621,16 @@ namespace OMW
     
     bool MapExtractor::savePendingExtraction(const PendingExtraction& extraction)
     {
+        // Get current overwrite flag from World (which checks LaunchParameters)
+        bool shouldOverwrite = MWBase::Environment::get().getWorld()->getOverwriteMaps();
+        
         if (extraction.isExterior)
         {
-            return extractExteriorCell(extraction.cellStore, mForceOverwrite);
+            return extractExteriorCell(extraction.cellStore, shouldOverwrite);
         }
         else
         {
-            return extractInteriorCell(extraction.cellStore, mForceOverwrite);
+            return extractInteriorCell(extraction.cellStore, shouldOverwrite);
         }
     }
 

@@ -124,7 +124,6 @@ namespace MWWorld
         std::string mStartCell;
         std::string mWorldMapOutputPath;
         std::string mLocalMapOutputPath;
-        bool mOverwriteMaps;
         int mTilemapDownscaleFactor;
         std::map<std::string, std::filesystem::path> mContentFileDirs;
         float mSwimHeightScale;
@@ -691,7 +690,7 @@ namespace MWWorld
 
         std::string getWorldMapOutputPath() const override { return mWorldMapOutputPath; }
         std::string getLocalMapOutputPath() const override { return mLocalMapOutputPath; }
-        bool getOverwriteMaps() const override { return mOverwriteMaps; }
+        bool getOverwriteMaps() const override;
 
         void extractWorldMap(int cellSize = 32, int borderWidth = 0) override;
         void extractLocalMaps(bool playerCellOnly = false) override;

@@ -48,7 +48,7 @@ namespace OMW
     class MapExtractor
     {
     public:
-        MapExtractor(const std::string& worldMapOutput, const std::string& localMapOutput, bool forceOverwrite,
+        MapExtractor(const std::string& worldMapOutput, const std::string& localMapOutput,
                      MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store);
         ~MapExtractor();
 
@@ -83,7 +83,6 @@ namespace OMW
         
         std::vector<PendingExtraction> mPendingExtractions;
         int mFramesToWait;
-        bool mForceOverwrite;
 
         void saveWorldMapTexture();
         void saveWorldMapTextureBlocks();

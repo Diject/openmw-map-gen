@@ -269,7 +269,6 @@ namespace MWWorld
         , mStartCell(startCell)
         , mWorldMapOutputPath(worldMapOutputPath)
         , mLocalMapOutputPath(localMapOutputPath)
-        , mOverwriteMaps(overwriteMaps)
         , mTilemapDownscaleFactor(tilemapDownscaleFactor)
         , mContentFileDirs(contentFileDirs)
         , mSwimHeightScale(0.f)
@@ -3921,12 +3920,26 @@ namespace MWWorld
             actor->setActive(value);
     }
 
+    bool World::getOverwriteMaps() const
+    {
+        // Check launch parameters first (set at runtime via setLaunchParameter)
+        const auto& params = MWBase::Environment::get().getLaunchParameters();
+        auto it = params.find("overwrite-maps");
+        if (it != params.end())
+        {
+            // Parameter found in launch parameters
+            return it->second == "true";
+        }
+
+        return false;
+    }
+
     void World::extractWorldMap(int cellSize, int borderWidth)
     {
         if (!mMapExtractor)
         {
             mMapExtractor = std::make_unique<OMW::MapExtractor>(
-                mWorldMapOutputPath, mLocalMapOutputPath, mOverwriteMaps, mRendering.get(), &mStore);
+                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore);
         }
         mMapExtractor->extractWorldMap(cellSize, borderWidth);
     }
@@ -3936,7 +3949,7 @@ namespace MWWorld
         if (!mMapExtractor)
         {
             mMapExtractor = std::make_unique<OMW::MapExtractor>(
-                mWorldMapOutputPath, mLocalMapOutputPath, mOverwriteMaps, mRendering.get(), &mStore);
+                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore);
         }
         // Set LocalMap from WindowManager
         if (auto* localMap = MWBase::Environment::get().getWindowManager()->getLocalMapRender())

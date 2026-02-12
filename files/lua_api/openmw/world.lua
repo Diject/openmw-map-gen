@@ -393,5 +393,14 @@
 --   print("Debug mode enabled")
 -- end
 
+---
+-- Set a launch parameter at runtime.
+-- This function allows Lua scripts to modify or add launch parameters during execution.
+-- These parameters are stored in the same location as command-line parameters and can be
+-- retrieved later using @{#world.getLaunchParameters}.
+-- @function [parent=#world] setLaunchParameter
+-- @param #string parameterName Name of the parameter to set
+-- @param #any value Value to assign to the parameter (must be a string, boolean, or number)
+
 return nil
 

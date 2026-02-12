@@ -405,6 +405,32 @@ namespace MWLua
         return result;
     };
 
+    api["setLaunchParameter"] = [lua = context.mLua](const std::string& parameterName, sol::object value) {
+        checkGameInitialized(lua);
+        std::string stringValue;
+        if (value.is<std::string>())
+        {
+            stringValue = value.as<std::string>();
+        }
+        else if (value.is<bool>())
+        {
+            stringValue = value.as<bool>() ? "true" : "false";
+        }
+        else if (value.is<double>())
+        {
+            stringValue = std::to_string(value.as<double>());
+        }
+        else if (value.is<int>())
+        {
+            stringValue = std::to_string(value.as<int>());
+        }
+        else
+        {
+            throw std::runtime_error("setLaunchParameter: value must be a string, boolean, or number");
+        }
+        MWBase::Environment::getMutable().setLaunchParameter(parameterName, stringValue);
+    };
+
     return LuaUtil::makeReadOnly(api);
     }
 }
