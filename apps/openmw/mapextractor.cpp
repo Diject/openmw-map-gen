@@ -662,10 +662,7 @@ namespace OMW
         
         if (outputImage->s() != 256 || outputImage->t() != 256)
         {
-            osg::ref_ptr<osg::Image> resized = new osg::Image;
-            resized->allocateImage(256, 256, 1, outputImage->getPixelFormat(), outputImage->getDataType());
             outputImage->scaleImage(256, 256, 1);
-            outputImage = resized;
         }
         if (osgDB::writeImageFile(*outputImage, outputPath.string()))
         {
@@ -724,6 +721,11 @@ namespace OMW
                 osg::ref_ptr<osg::Image> image = mLocalMap->getMapImage(x, y);
                 if (image && image->s() > 0 && image->t() > 0 && image->data() != nullptr)
                 {
+                    if (image->s() != 256 || image->t() != 256)
+                    {
+                        image->scaleImage(256, 256, 1);
+                    }
+
                     imageCache[{x, y}] = image;
                     minX = std::min(minX, x);
                     maxX = std::max(maxX, x);
