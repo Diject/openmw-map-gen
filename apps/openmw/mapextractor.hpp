@@ -49,7 +49,7 @@ namespace OMW
     {
     public:
         MapExtractor(const std::string& worldMapOutput, const std::string& localMapOutput,
-                     MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store);
+                     MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store, int localMapSize = 256);
         ~MapExtractor();
 
         void setLocalMap(MWRender::LocalMap* localMap) { mLocalMap = localMap; }
@@ -83,6 +83,7 @@ namespace OMW
         
         std::vector<PendingExtraction> mPendingExtractions;
         int mFramesToWait;
+        int mLocalMapSize;
 
         void saveWorldMapTexture();
         void saveWorldMapTextureBlocks();
