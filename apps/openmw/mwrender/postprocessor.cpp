@@ -812,13 +812,15 @@ namespace MWRender
             mTechniques.push_back(technique);
         }
 
-        for (const std::string& techniqueName : Settings::postProcessing().mChain.get())
-        {
-            if (techniqueName.empty())
-                continue;
+        // Disable external shaders
 
-            mTechniques.push_back(loadTechnique(techniqueName));
-        }
+        //for (const std::string& techniqueName : Settings::postProcessing().mChain.get())
+        //{
+        //    if (techniqueName.empty())
+        //        continue;
+
+        //    mTechniques.push_back(loadTechnique(techniqueName));
+        //}
 
         dirtyTechniques();
     }
