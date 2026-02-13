@@ -181,6 +181,22 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.enableFontExport(variables["export-fonts"].as<bool>());
     engine.setRandomSeed(variables["random-seed"].as<unsigned int>());
 
+    if (!variables["use-original-settings"].as<bool>())
+    {
+        Settings::gui().mScalingFactor.set(1);
+        Settings::video().mResolutionX.set(640);
+        Settings::video().mResolutionY.set(480);
+        Settings::video().mWindowMode.set(static_cast<Settings::WindowMode>(2));
+        Settings::video().mWindowBorder.set(true);
+        Settings::postProcessing().mEnabled.set(false);
+        Settings::groundcover().mEnabled.set(false);
+        Settings::terrain().mDistantTerrain.set(false);
+        Settings::input().mGrabCursor.set(false);
+
+        // Also set the local map size in Settings for easy access from localmap.cpp
+        Settings::map().mLocalMapResolution.set(variables["local-map-size"].as<int>());
+    }
+
     std::string worldMapOutput = variables["world-map-output"].as<std::string>();
     std::string localMapOutput = variables["local-map-output"].as<std::string>();
 
@@ -206,8 +222,6 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
     int localMapSize = variables["local-map-size"].as<int>();
     engine.setLocalMapSize(localMapSize);
-    // Also set the local map size in Settings for easy access from localmap.cpp
-    Settings::map().mLocalMapResolution.set(localMapSize);
 
     // Store launch parameters for Lua access
     std::map<std::string, std::string> launchParams;

@@ -116,6 +116,9 @@ namespace OpenMW
         addOption("local-map-size", bpo::value<int>()->default_value(256),
             "size of local map images in pixels. Default: 256");
 
+        addOption("use-original-settings", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "use original settings for resolution, window mode, etc.");
+
         return desc;
     }
 }
