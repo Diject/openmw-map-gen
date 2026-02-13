@@ -53,41 +53,31 @@ static bool readBool(ESM::ESMReader& esm)
 
 void ESM::LuaScriptsCfg::load(ESMReader& esm)
 {
+    // Skip Lua scripts from ESM files without loading them
     while (esm.isNextSub("LUAS"))
     {
-        mScripts.emplace_back();
-        ESM::LuaScriptCfg& script = mScripts.back();
-        script.mScriptPath = VFS::Path::Normalized(esm.getHString());
+        // Skip script path
+        esm.skipHString();
 
+        // Skip LUAF subrecord
         esm.getSubNameIs("LUAF");
-        esm.getSubHeader();
-        if (esm.getSubSize() < 4 || (esm.getSubSize() % 4 != 0))
-            esm.fail("Incorrect LUAF size");
-        esm.getT(script.mFlags);
-        script.mTypes.resize((esm.getSubSize() - 4) / 4);
-        for (uint32_t& type : script.mTypes)
-            esm.getT(type);
+        esm.skipHSub();
 
-        script.mInitializationData = loadLuaBinaryData(esm);
+        // Skip initialization data
+        loadLuaBinaryData(esm);
 
+        // Skip LUAR records
         while (esm.isNextSub("LUAR"))
         {
-            esm.getSubHeader();
-            script.mRecords.emplace_back();
-            ESM::LuaScriptCfg::PerRecordCfg& recordCfg = script.mRecords.back();
-            recordCfg.mAttach = readBool(esm);
-            recordCfg.mRecordId = esm.getRefId(esm.getSubSize() - 1);
-            recordCfg.mInitializationData = loadLuaBinaryData(esm);
+            esm.skipHSub();
+            loadLuaBinaryData(esm);
         }
+        
+        // Skip LUAI records
         while (esm.isNextSub("LUAI"))
         {
-            esm.getSubHeader();
-            script.mRefs.emplace_back();
-            ESM::LuaScriptCfg::PerRefCfg& refCfg = script.mRefs.back();
-            refCfg.mAttach = readBool(esm);
-            esm.getT<uint32_t>(refCfg.mRefnumIndex);
-            esm.getT<int32_t>(refCfg.mRefnumContentFile);
-            refCfg.mInitializationData = loadLuaBinaryData(esm);
+            esm.skipHSub();
+            loadLuaBinaryData(esm);
         }
     }
 }
@@ -162,22 +152,27 @@ void ESM::LuaScriptsCfg::save(ESMWriter& esm) const
 
 void ESM::LuaScripts::load(ESMReader& esm)
 {
+    // Skip Lua scripts from save files without loading them
     while (esm.isNextSub("LUAS"))
     {
-        VFS::Path::Normalized name(esm.getHString());
-        std::string data = loadLuaBinaryData(esm);
-        std::vector<LuaTimer> timers;
+        // Skip script path
+        esm.skipHString();
+        
+        // Skip script data
+        loadLuaBinaryData(esm);
+        
+        // Skip timers
         while (esm.isNextSub("LUAT"))
         {
-            esm.getSubHeader();
-            LuaTimer timer;
-            esm.getT(timer.mType);
-            esm.getT(timer.mTime);
-            timer.mCallbackName = esm.getHNString("LUAC");
-            timer.mCallbackArgument = loadLuaBinaryData(esm);
-            timers.push_back(std::move(timer));
+            esm.skipHSub();
+            
+            // Skip callback name (LUAC)
+            if (esm.isNextSub("LUAC"))
+                esm.skipHString();
+            
+            // Skip callback argument
+            loadLuaBinaryData(esm);
         }
-        mScripts.push_back({ std::move(name), std::move(data), std::move(timers) });
     }
 }
 
