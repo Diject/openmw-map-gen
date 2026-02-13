@@ -1092,10 +1092,11 @@ void OMW::Engine::go()
 
     mLuaWorker->join();
 
+    // Remove saving of settings
     // Save user settings
-    Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
-    Settings::ShaderManager::get().save();
-    mLuaManager->savePermanentStorage(mCfgMgr.getUserConfigPath());
+    //Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
+    //Settings::ShaderManager::get().save();
+    //mLuaManager->savePermanentStorage(mCfgMgr.getUserConfigPath());
 }
 
 void OMW::Engine::setCompileAll(bool all)
