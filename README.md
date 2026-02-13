@@ -32,7 +32,7 @@ By default textures are written to `./textures/advanced_world_map/` inside the a
 Note about scripts
 ------------------
 
-Files with the `.omwscripts` extension are not loaded by this build. If a mod packages `.omwscripts` into other formats, those scripts may not work correctly because many standard API calls are removed.
+Files with the `.omwscripts` extension are not loaded by this build.
 
 
 Command-line options (fork-specific)
