@@ -7,6 +7,7 @@
 #include <components/misc/rng.hpp>
 #include <components/platform/platform.hpp>
 #include <components/version/version.hpp>
+#include <components/settings/values.hpp>
 
 #include "mwgui/debugwindow.hpp"
 
@@ -203,6 +204,10 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.setLocalMapOutput(localMapOutput);
     engine.setOverwriteMaps(variables["overwrite-maps"].as<bool>());
     engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
+    int localMapSize = variables["local-map-size"].as<int>();
+    engine.setLocalMapSize(localMapSize);
+    // Also set the local map size in Settings for easy access from localmap.cpp
+    Settings::map().mLocalMapResolution.set(localMapSize);
 
     // Store launch parameters for Lua access
     std::map<std::string, std::string> launchParams;

@@ -37,12 +37,13 @@
 namespace OMW
 {
     MapExtractor::MapExtractor(const std::string& worldMapOutput, const std::string& localMapOutput,
-        MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store)
+        MWRender::RenderingManager* renderingManager, const MWWorld::ESMStore* store, int localMapSize)
         : mWorldMapOutputDir(worldMapOutput)
         , mLocalMapOutputDir(localMapOutput)
         , mRenderingManager(renderingManager)
         , mStore(store)
         , mLocalMap(nullptr)
+        , mLocalMapSize(localMapSize)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
@@ -660,9 +661,9 @@ namespace OMW
 
         osg::ref_ptr<osg::Image> outputImage = new osg::Image(*image, osg::CopyOp::DEEP_COPY_ALL);
         
-        if (outputImage->s() != 256 || outputImage->t() != 256)
+        if (outputImage->s() != mLocalMapSize || outputImage->t() != mLocalMapSize)
         {
-            outputImage->scaleImage(256, 256, 1);
+            outputImage->scaleImage(mLocalMapSize, mLocalMapSize, 1);
         }
         if (osgDB::writeImageFile(*outputImage, outputPath.string()))
         {
@@ -721,9 +722,9 @@ namespace OMW
                 osg::ref_ptr<osg::Image> image = mLocalMap->getMapImage(x, y);
                 if (image && image->s() > 0 && image->t() > 0 && image->data() != nullptr)
                 {
-                    if (image->s() != 256 || image->t() != 256)
+                    if (image->s() != mLocalMapSize || image->t() != mLocalMapSize)
                     {
-                        image->scaleImage(256, 256, 1);
+                        image->scaleImage(mLocalMapSize, mLocalMapSize, 1);
                     }
 
                     imageCache[{x, y}] = image;
@@ -750,8 +751,8 @@ namespace OMW
             return;
         }
 
-        int totalWidth = segmentsX * 256;
-        int totalHeight = segmentsY * 256;
+        int totalWidth = segmentsX * mLocalMapSize;
+        int totalHeight = segmentsY * mLocalMapSize;
         
         osg::ref_ptr<osg::Image> combinedImage = new osg::Image;
         combinedImage->allocateImage(totalWidth, totalHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
@@ -771,12 +772,12 @@ namespace OMW
                 int segWidth = segmentImage->s();
                 int segHeight = segmentImage->t();
                 
-                int destX = (x - minX) * 256;
-                int destY = (y - minY) * 256;
+                int destX = (x - minX) * mLocalMapSize;
+                int destY = (y - minY) * mLocalMapSize;
 
-                for (int sy = 0; sy < std::min(segHeight, 256); ++sy)
+                for (int sy = 0; sy < std::min(segHeight, mLocalMapSize); ++sy)
                 {
-                    for (int sx = 0; sx < std::min(segWidth, 256); ++sx)
+                    for (int sx = 0; sx < std::min(segWidth, mLocalMapSize); ++sx)
                     {
                         unsigned char* srcPixel = segmentImage->data(sx, sy);
                         int dx = destX + sx;
@@ -827,10 +828,10 @@ namespace OMW
         float rotatedY = toOrigin.x() * std::sin(nA) + toOrigin.y() * std::cos(nA) + center.y();
         
         // Convert to texture coordinates (pixels from bottom-left corner)
-        float oX = (rotatedX - min.x()) / mapWorldSize * 256.0f;
-        float oY = (rotatedY - min.y()) / mapWorldSize * 256.0f;
+        float oX = (rotatedX - min.x()) / mapWorldSize * static_cast<float>(mLocalMapSize);
+        float oY = (rotatedY - min.y()) / mapWorldSize * static_cast<float>(mLocalMapSize);
         
-        float totalHeight = segmentsY * 256.0f;
+        float totalHeight = segmentsY * static_cast<float>(mLocalMapSize);
 
         std::filesystem::path yamlPath = mLocalMapOutputDir / (lowerCaseId + ".yaml");
         std::ofstream file(yamlPath);

@@ -113,6 +113,9 @@ namespace OpenMW
         addOption("world-map-border", bpo::value<int>()->default_value(2),
             "border size around territories above 0 on the world map texture. 0 - disabled. Default: 2");
 
+        addOption("local-map-size", bpo::value<int>()->default_value(256),
+            "size of local map images in pixels. Default: 256");
+
         return desc;
     }
 }

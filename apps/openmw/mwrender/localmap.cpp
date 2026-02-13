@@ -77,7 +77,7 @@ namespace MWRender
     LocalMap::LocalMap(osg::Group* root)
         : mRoot(root)
         , mMapResolution(static_cast<int>(
-              Settings::map().mLocalMapResolution * MWBase::Environment::get().getWindowManager()->getScalingFactor()))
+              Settings::map().mLocalMapResolution))
         , mMapWorldSize(Constants::CellSizeInUnits)
         , mCellDistance(Constants::CellGridRadius)
         , mAngle(0.f)

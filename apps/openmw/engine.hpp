@@ -187,6 +187,7 @@ namespace OMW
         std::string mLocalMapOutput;
         bool mOverwriteMaps;
         int mTilemapDownscaleFactor;
+        int mLocalMapSize;
         std::map<std::string, std::filesystem::path> mContentFileDirs;
         std::map<std::string, std::string> mLaunchParameters;
 
@@ -278,6 +279,8 @@ namespace OMW
         void setOverwriteMaps(bool overwrite);
 
         void setTilemapDownscaleFactor(int factor);
+
+        void setLocalMapSize(int size);
 
         void setRecastMaxLogLevel(Debug::Level value) { mMaxRecastLogLevel = value; }
 

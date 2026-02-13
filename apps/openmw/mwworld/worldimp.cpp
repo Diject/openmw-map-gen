@@ -255,7 +255,7 @@ namespace MWWorld
     }
 
     World::World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, const std::map<std::string, std::filesystem::path>& contentFileDirs)
+        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, int localMapSize, const std::map<std::string, std::filesystem::path>& contentFileDirs)
         : mResourceSystem(resourceSystem)
         , mLocalScripts(mStore)
         , mWorldModel(mStore, mReaders)
@@ -270,6 +270,7 @@ namespace MWWorld
         , mWorldMapOutputPath(worldMapOutputPath)
         , mLocalMapOutputPath(localMapOutputPath)
         , mTilemapDownscaleFactor(tilemapDownscaleFactor)
+        , mLocalMapSize(localMapSize)
         , mContentFileDirs(contentFileDirs)
         , mSwimHeightScale(0.f)
         , mDistanceToFocusObject(-1.f)
@@ -3949,7 +3950,7 @@ namespace MWWorld
         if (!mMapExtractor)
         {
             mMapExtractor = std::make_unique<OMW::MapExtractor>(
-                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore);
+                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore, mLocalMapSize);
         }
         // Set LocalMap from WindowManager
         if (auto* localMap = MWBase::Environment::get().getWindowManager()->getLocalMapRender())

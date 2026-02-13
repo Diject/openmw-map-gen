@@ -381,6 +381,7 @@ OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
     , mGlMaxTextureImageUnits(0)
     , mOverwriteMaps(false)
     , mTilemapDownscaleFactor(4)
+    , mLocalMapSize(256)
 {
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     SDL_SetHint(SDL_HINT_MAC_OPENGL_ASYNC_DISPATCH, "1");
@@ -840,7 +841,7 @@ void OMW::Engine::prepareEngine()
     // Create the world
     mWorld = std::make_unique<MWWorld::World>(
         mResourceSystem.get(), mActivationDistanceOverride, mCellName, mCfgMgr.getUserDataPath(),
-        mWorldMapOutput, mLocalMapOutput, mOverwriteMaps, mTilemapDownscaleFactor, mContentFileDirs);
+        mWorldMapOutput, mLocalMapOutput, mOverwriteMaps, mTilemapDownscaleFactor, mLocalMapSize, mContentFileDirs);
     mEnvironment.setWorld(*mWorld);
     mEnvironment.setWorldModel(mWorld->getWorldModel());
     mEnvironment.setESMStore(mWorld->getStore());
@@ -1170,6 +1171,11 @@ void OMW::Engine::setOverwriteMaps(bool overwrite)
 void OMW::Engine::setTilemapDownscaleFactor(int factor)
 {
     mTilemapDownscaleFactor = factor;
+}
+
+void OMW::Engine::setLocalMapSize(int size)
+{
+    mLocalMapSize = size;
 }
 
 void OMW::Engine::setContentFileDirs(const std::map<std::string, std::filesystem::path>& dirs)
