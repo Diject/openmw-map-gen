@@ -46,6 +46,7 @@ Command-line options (fork-specific)
 --world-map-border=2           The number of pixels to add as a border around terrain above water level in the world map texture. Default: 2.
 --local-map-size=256           Size of output local map images in pixels. Default: 256. Overrides 'local map resolution' setting from settings.cfg.
 --use-original-settings        Use settings for resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
+--use-constant-scale           Use a constant scale for interior local map textures instead of scaling them to fit the unused texture space.
 ```
 
 Notes

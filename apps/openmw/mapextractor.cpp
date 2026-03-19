@@ -44,6 +44,7 @@ namespace OMW
         , mStore(store)
         , mLocalMap(nullptr)
         , mLocalMapSize(localMapSize)
+        , mFitLocalMaps(false)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
@@ -512,7 +513,7 @@ namespace OMW
                 {
                     textureReady = true;
                 }
-                else if (current.framesWaited <= 120)
+                else if (current.framesWaited <= 30)
                 {
                     return;
                 }
@@ -534,7 +535,7 @@ namespace OMW
                 }
                 
                 
-                if (!textureReady && current.framesWaited <= 120)
+                if (!textureReady && current.framesWaited <= 30)
                 {
                     return;
                 }
@@ -562,9 +563,9 @@ namespace OMW
                     Log(Debug::Info) << "Extraction of active local maps complete";
                 }
             }
-            else if (current.framesWaited > 120)
+            else if (current.framesWaited > 30)
             {
-                // If we've waited too long (120 frames = ~2 seconds at 60 fps), skip this cell
+                // If we've waited too long (30 frames = ~0.5 seconds at 60 fps), skip this cell
                 if (current.isExterior)
                 {
                     int x = current.cellStore->getCell()->getGridX();
@@ -615,9 +616,15 @@ namespace OMW
             int x = extraction.cellStore->getCell()->getGridX();
             int y = extraction.cellStore->getCell()->getGridY();
             mLocalMap->clearCellCache(x, y);
+            mLocalMap->requestMap(const_cast<MWWorld::CellStore*>(extraction.cellStore));
         }
-        
-        mLocalMap->requestMap(const_cast<MWWorld::CellStore*>(extraction.cellStore));
+        else
+        {
+            if (mFitLocalMaps)
+                mLocalMap->requestInteriorMapFitted(const_cast<MWWorld::CellStore*>(extraction.cellStore));
+            else
+                mLocalMap->requestMap(const_cast<MWWorld::CellStore*>(extraction.cellStore));
+        }
     }
     
     bool MapExtractor::savePendingExtraction(const PendingExtraction& extraction)
@@ -820,7 +827,8 @@ namespace OMW
         
         osg::Vec2f min(bounds.xMin(), bounds.yMin());
         
-        const float mapWorldSize = Constants::CellSizeInUnits;
+        // Use the effective map world size
+        const float mapWorldSize = mLocalMap->getEffectiveMapWorldSize();
         
         // Calculate position of world origin (0,0) on the rotated map
         osg::Vec2f toOrigin(0.0f - center.x(), 0.0f - center.y());
@@ -847,12 +855,18 @@ namespace OMW
         // Used to shrink the bounds to match the one used during cell rendering.
         const float padding = 500.0f;
 
+        // Scale factor: ratio of default mapWorldSize to effective mapWorldSize
+        const float defaultMapWorldSize = static_cast<float>(mLocalMap->getMapWorldSize());
+        const float tSc = defaultMapWorldSize / mapWorldSize;
+
         file << "v: 2\n";
         file << "nA: " << nA << "\n";
         file << "oX: " << oX << "\n";
         file << "oY: " << oY << "\n";
         file << "wT: " << segmentsX << "\n";
         file << "hT: " << segmentsY << "\n";
+        file << "tSc: " << tSc << "\n";
+        file << "tS: " << mLocalMapSize << "\n";
         file << "mBnds:\n";
         file << "  min: [" << bounds.xMin() + padding << ", " << bounds.yMin() + padding << ", " << bounds.zMin() << "]\n";
         file << "  max: [" << bounds.xMax() - padding << ", " << bounds.yMax() - padding << ", " << bounds.zMax() << "]\n";

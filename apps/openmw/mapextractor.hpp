@@ -53,6 +53,7 @@ namespace OMW
         ~MapExtractor();
 
         void setLocalMap(MWRender::LocalMap* localMap) { mLocalMap = localMap; }
+        void setFitLocalMaps(bool fit) { mFitLocalMaps = fit; }
 
         void extractWorldMap(int cellSize = 32, int borderWidth = 0);
         void extractLocalMaps(const std::vector<const MWWorld::CellStore*>& activeCells);
@@ -84,6 +85,7 @@ namespace OMW
         std::vector<PendingExtraction> mPendingExtractions;
         int mFramesToWait;
         int mLocalMapSize;
+        bool mFitLocalMaps;
 
         void saveWorldMapTexture();
         void saveWorldMapTextureBlocks();

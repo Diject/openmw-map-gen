@@ -104,6 +104,9 @@ namespace OpenMW
         addOption("overwrite-maps", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "overwrite existing map files during extraction");
 
+        addOption("use-constant-scale", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "use constant scale for interior maps instead of increasing scale to fit unused texture space");
+
         addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(-1),
             "downscale factor for tilemap generation (must be power of 2, default: -1 - disabled)");
 
