@@ -3957,6 +3957,14 @@ namespace MWWorld
         {
             mMapExtractor->setLocalMap(localMap);
         }
+
+        // Check launch parameters use-constant-scale flag
+        {
+            const auto& params = MWBase::Environment::get().getLaunchParameters();
+            auto it = params.find("use-constant-scale");
+            bool fitLocalMaps = (it != params.end() && it->second == "false");
+            mMapExtractor->setFitLocalMaps(fitLocalMaps);
+        }
         
         const auto& activeCells = mWorldScene->getActiveCells();
         std::vector<const MWWorld::CellStore*> cells;

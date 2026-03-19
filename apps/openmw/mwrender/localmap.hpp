@@ -134,6 +134,23 @@ namespace MWRender
          */
         float getInteriorAngle() const { return mAngle; }
 
+        /**
+         * Request a fitted interior map render. Computes segment count at default scale,
+         * then adjusts the effective map world size so the interior fills the texture.
+         */
+        void requestInteriorMapFitted(const MWWorld::CellStore* cell);
+
+        /**
+         * Get the effective map world size used during the last interior render.
+         * For default renders this equals mMapWorldSize; for fitted renders it may be smaller.
+         */
+        float getEffectiveMapWorldSize() const { return mEffectiveMapWorldSize; }
+
+        /**
+         * Get the default map world size (Constants::CellSizeInUnits).
+         */
+        int getMapWorldSize() const { return mMapWorldSize; }
+
     private:
         osg::ref_ptr<osg::Group> mRoot;
         osg::ref_ptr<osg::Node> mSceneRoot;
@@ -191,6 +208,11 @@ namespace MWRender
         void setupRenderToTexture(
             int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
 
+        void setupRenderToTexture(
+            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax,
+            float customMapWorldSize);
+
+        float mEffectiveMapWorldSize;
         osg::BoundingBox mBounds;
         osg::Vec2f mCenter;
         bool mInterior;
