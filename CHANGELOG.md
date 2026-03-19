@@ -1,3 +1,7 @@
+V4:
+By default, interior local map textures are now scaling up to fit unused texture space.
+Added the launch parameter --use-constant-scale to use a constant scale for all local map textures instead of scaling them to fit the unused texture space.
+
 V3:
 Fixed scaling of local map textures.
 External shaders and Lua scripts embedded in mod files are now ignored.
