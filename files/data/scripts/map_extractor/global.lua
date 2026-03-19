@@ -3,6 +3,7 @@ local world = require("openmw.world")
 local async = require("openmw.async")
 local core = require("openmw.core")
 local types = require("openmw.types")
+local realTimer = require("scripts.map_extractor.realTimer")
 
 local visitedCells = {}
 
@@ -31,7 +32,7 @@ end
 
 local function showCompletionMessage()
     if world.isMapExtractionActive() then
-        async:newUnsavableSimulationTimer(0.1, showCompletionMessage)
+        realTimer.new(1, showCompletionMessage)
         return
     end
 
@@ -46,7 +47,7 @@ end
 
 local function generateTilemap()
     if world.isMapExtractionActive() then
-        async:newUnsavableSimulationTimer(0.1, generateTilemap)
+        realTimer.new(1, generateTilemap)
         return
     end
 
@@ -57,7 +58,7 @@ local function generateTilemap()
         line3 = "",
     })
 
-    async:newUnsavableSimulationTimer(0.2, function ()
+    realTimer.new(1, function ()
         world.generateTileWorldMap(util.color.rgb(0.255, 0.243, 0.212))
         showCompletionMessage()
     end)
@@ -73,7 +74,7 @@ local function processAndTeleport(skipExtraction)
 
     local function func()
         if world.isMapExtractionActive() then
-            async:newUnsavableSimulationTimer(0.05, func)
+            realTimer.new(0, func)
             return
         elseif skipExtraction then
             pl:sendEvent("builtin:map_extractor:updateMenu", {
@@ -139,7 +140,7 @@ local function processAndTeleport(skipExtraction)
         end
     end
 
-    async:newUnsavableSimulationTimer(0.05, func)
+    realTimer.new(1, func)
 end
 
 
@@ -148,15 +149,8 @@ local function start()
     local pl = world.players[1]
     pl:sendEvent("builtin:map_extractor:updateMenu", {line1 = "Generating world map...", btnVisibility = false})
     world.enableExtractionMode()
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Controls, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Fighting, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Jumping, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Looking, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Magic, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.VanityMode, false)
-    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.ViewMode, false)
 
-    async:newUnsavableSimulationTimer(0.1, function ()
+    realTimer.new(0, function ()
         local parametes = world.getLaunchParameters()
         local pixPerCell = tonumber(parametes["world-map-pixelsPerCell"]) or 32
         local borderSize = tonumber(parametes["world-map-border"]) or 2
@@ -199,12 +193,27 @@ end
 
 
 async:newUnsavableSimulationTimer(0.1, function ()
+    world.pause("main")
+    local pl = world.players[1]
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Controls, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Fighting, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Jumping, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Looking, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.Magic, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.VanityMode, false)
+    types.Player.setControlSwitch(pl, types.Player.CONTROL_SWITCH.ViewMode, false)
+
     doStep()
 end)
 
 
 
 return {
+    engineHandlers = {
+        onUpdate = function(dt)
+            realTimer.updateTimers()
+        end,
+    },
     eventHandlers = {
         ["builtin:map_extractor:teleport"] = function (pl)
             processAndTeleport()
