@@ -1,4 +1,5 @@
 V4:
+The game world is now paused during the process.
 By default, interior local map textures are now scaling up to fit unused texture space.
 Added the launch parameter --use-constant-scale to use a constant scale for all local map textures instead of scaling them to fit the unused texture space.
 
