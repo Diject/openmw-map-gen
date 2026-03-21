@@ -123,10 +123,11 @@ set(BUILTIN_DATA_FILES
 
     builtin.omwscripts
 	
-	scripts/map_extractor/borders.lua
-	scripts/map_extractor/global.lua
-	scripts/map_extractor/menu.lua
-	scripts/map_extractor/player.lua
+    scripts/map_extractor/borders.lua
+    scripts/map_extractor/global.lua
+    scripts/map_extractor/menu.lua
+    scripts/map_extractor/player.lua
+    scripts/map_extractor/realTimer.lua
 
     scripts/omw/console/global.lua
     scripts/omw/console/local.lua
