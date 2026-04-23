@@ -402,5 +402,13 @@
 -- @param #string parameterName Name of the parameter to set
 -- @param #any value Value to assign to the parameter (must be a string, boolean, or number)
 
+---
+-- Clear output directories where map files are generated.
+-- Deletes all files with '.png' and '.yaml' extensions in the world map output directory
+-- and local map output directory.
+-- @function [parent=#world] clearMapOutputDirs
+-- @usage
+-- world.clearMapOutputDirs()
+
 return nil
 

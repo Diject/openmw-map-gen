@@ -104,6 +104,9 @@ namespace OpenMW
         addOption("overwrite-maps", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "overwrite existing map files during extraction");
 
+        addOption("clear-output-dirs", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "clear output directories (png and yaml files) before starting");
+
         addOption("use-constant-scale", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "use constant scale for interior maps instead of increasing scale to fit unused texture space");
 

@@ -145,7 +145,7 @@ end
 
 
 local function start()
-    step = 3
+    step = 4
     local pl = world.players[1]
     pl:sendEvent("builtin:map_extractor:updateMenu", {line1 = "Generating world map...", btnVisibility = false})
     world.enableExtractionMode()
@@ -156,7 +156,6 @@ local function start()
         local borderSize = tonumber(parametes["world-map-border"]) or 2
 
         world.extractWorldMap(pixPerCell, borderSize)
-
         if not world.getOverwriteFlag() then
             for _, cellId in pairs(world.getExistingLocalMapIds() or {}) do
                 visitedCells[cellId] = true
@@ -178,9 +177,17 @@ local function doStep()
             btnVisibility = true,
         })
 
-    elseif step <= 1 and world.getLaunchParameters()["overwrite-maps"] ~= "true" and
+    elseif step <= 1 and world.getLaunchParameters()["clear-output-dirs"] ~= "true" and
             next(world.getExistingLocalMapIds() or {}) then
         step = 2
+        world.players[1]:sendEvent("builtin:map_extractor:updateMenu", {
+            line1 = "Existing local map textures detected. Do you want to delete them? (Recommended)",
+            line2 = "", line3 = "",
+            btnVisibility = true,
+        })
+    elseif step <= 2 and world.getLaunchParameters()["overwrite-maps"] ~= "true" and
+            next(world.getExistingLocalMapIds() or {}) then
+        step = 3
         world.players[1]:sendEvent("builtin:map_extractor:updateMenu", {
             line1 = "Existing local map textures detected. Do you want to overwrite them?",
             line2 = "", line3 = "",
@@ -228,6 +235,9 @@ return {
                 end
                 doStep()
             elseif step == 2 then
+                world.clearMapOutputDirs()
+                doStep()
+            elseif step == 3 then
                 world.setLaunchParameter("overwrite-maps", true)
                 start()
             end
@@ -237,6 +247,8 @@ return {
             if step == 1 then
                 doStep()
             elseif step == 2 then
+                doStep()
+            elseif step == 3 then
                 start()
             end
         end,

@@ -1,3 +1,7 @@
+V5:
+Added the launch parameter --clear-output-dirs to clear map output directories before starting.
+Added a prompt to clear map output directories.
+
 V4:
 The game world is now paused during the process.
 By default, interior local map textures are now scaling up to fit unused texture space.
