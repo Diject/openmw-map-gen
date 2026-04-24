@@ -383,6 +383,30 @@ namespace MWLua
             MWBase::Environment::get().getWorld()->setLocalMapOutputPath(path);
         };
 
+        api["clearMapOutputDirs"] = [lua = context.mLua]() {
+            checkGameInitialized(lua);
+            auto clearDir = [](const std::string& dirPath) {
+                std::filesystem::path dir(dirPath);
+                if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+                    return;
+
+                for (const auto& entry : std::filesystem::directory_iterator(dir))
+                {
+                    if (entry.is_regular_file())
+                    {
+                        std::string ext = entry.path().extension().string();
+                        if (ext == ".yaml" || ext == ".png")
+                        {
+                            std::filesystem::remove(entry.path());
+                        }
+                    }
+                }
+            };
+
+            clearDir(MWBase::Environment::get().getWorld()->getWorldMapOutputPath());
+            clearDir(MWBase::Environment::get().getWorld()->getLocalMapOutputPath());
+        };
+
     api["getContentFileDir"] = [lua = context.mLua](const std::string& contentFile) -> sol::object {
         checkGameInitialized(lua);
         std::string dir = MWBase::Environment::get().getWorld()->getContentFileDir(contentFile);
