@@ -1,3 +1,7 @@
+V6:
+Removed unnecessary elements from the launcher.
+Forced the use of English encoding for unsupported languages.
+
 V5:
 Added the launch parameter --clear-output-dirs to clear map output directories before starting.
 Added a prompt to clear map output directories.

@@ -107,9 +107,10 @@ void Launcher::MainDialog::createIcons()
         QIcon::setThemeName("fallback");
 
     connect(dataAction, &QAction::triggered, this, &MainDialog::enableDataPage);
-    connect(graphicsAction, &QAction::triggered, this, &MainDialog::enableGraphicsPage);
-    connect(settingsAction, &QAction::triggered, this, &MainDialog::enableSettingsPage);
-    connect(importAction, &QAction::triggered, this, &MainDialog::enableImportPage);
+
+    graphicsAction->setVisible(false);
+    settingsAction->setVisible(false);
+    importAction->setVisible(false);
 }
 
 void Launcher::MainDialog::createPages()
@@ -119,22 +120,15 @@ void Launcher::MainDialog::createPages()
         return;
 
     mDataFilesPage = new DataFilesPage(mCfgMgr, mGameSettings, mLauncherSettings, this);
-    mGraphicsPage = new GraphicsPage(this);
-    mImportPage = new ImportPage(mCfgMgr, mGameSettings, mLauncherSettings, this);
-    mSettingsPage = new SettingsPage(mGameSettings, this);
+    mGraphicsPage = nullptr;
+    mImportPage = nullptr;
+    mSettingsPage = nullptr;
 
     // Add the pages to the stacked widget
     pagesWidget->addWidget(mDataFilesPage);
-    pagesWidget->addWidget(mGraphicsPage);
-    pagesWidget->addWidget(mSettingsPage);
-    pagesWidget->addWidget(mImportPage);
 
     // Select the first page
     dataAction->setChecked(true);
-
-    // Using Qt::QueuedConnection because signal is emitted in a subthread and slot is in the main thread
-    connect(mDataFilesPage, &DataFilesPage::signalLoadedCellsChanged, mSettingsPage,
-        &SettingsPage::slotLoadedCellsChanged, Qt::QueuedConnection);
 }
 
 Launcher::FirstRunDialogResult Launcher::MainDialog::showFirstRunDialog()
@@ -233,10 +227,6 @@ bool Launcher::MainDialog::setup()
     // Now create the pages as they need the settings
     createPages();
 
-    // Call this so we can exit on SDL errors before mainwindow is shown
-    if (!mGraphicsPage->loadSettings())
-        return false;
-
     loadSettings();
 
     return true;
@@ -255,16 +245,7 @@ bool Launcher::MainDialog::reloadSettings()
     if (!setupGraphicsSettings())
         return false;
 
-    if (!mImportPage->loadSettings())
-        return false;
-
     if (!mDataFilesPage->loadSettings())
-        return false;
-
-    if (!mGraphicsPage->loadSettings())
-        return false;
-
-    if (!mSettingsPage->loadSettings())
         return false;
 
     return true;
@@ -273,42 +254,17 @@ bool Launcher::MainDialog::reloadSettings()
 void Launcher::MainDialog::enableDataPage()
 {
     pagesWidget->setCurrentIndex(0);
-    mImportPage->resetProgressBar();
     dataAction->setChecked(true);
     graphicsAction->setChecked(false);
     importAction->setChecked(false);
     settingsAction->setChecked(false);
 }
 
-void Launcher::MainDialog::enableGraphicsPage()
-{
-    pagesWidget->setCurrentIndex(1);
-    mImportPage->resetProgressBar();
-    dataAction->setChecked(false);
-    graphicsAction->setChecked(true);
-    settingsAction->setChecked(false);
-    importAction->setChecked(false);
-}
+void Launcher::MainDialog::enableGraphicsPage() {}
 
-void Launcher::MainDialog::enableSettingsPage()
-{
-    pagesWidget->setCurrentIndex(2);
-    mImportPage->resetProgressBar();
-    dataAction->setChecked(false);
-    graphicsAction->setChecked(false);
-    settingsAction->setChecked(true);
-    importAction->setChecked(false);
-}
+void Launcher::MainDialog::enableSettingsPage() {}
 
-void Launcher::MainDialog::enableImportPage()
-{
-    pagesWidget->setCurrentIndex(3);
-    mImportPage->resetProgressBar();
-    dataAction->setChecked(false);
-    graphicsAction->setChecked(false);
-    settingsAction->setChecked(false);
-    importAction->setChecked(true);
-}
+void Launcher::MainDialog::enableImportPage() {}
 
 bool Launcher::MainDialog::setupLauncherSettings()
 {
@@ -476,9 +432,6 @@ bool Launcher::MainDialog::writeSettings()
     // Now write all config files
     saveSettings();
     mDataFilesPage->saveSettings();
-    mGraphicsPage->saveSettings();
-    mImportPage->saveSettings();
-    mSettingsPage->saveSettings();
 
     const auto& userPath = mCfgMgr.getUserConfigPath();
 
@@ -512,20 +465,6 @@ bool Launcher::MainDialog::writeSettings()
 
     mGameSettings.writeFileWithComments(file);
     file.close();
-
-    // Graphics settings
-    const auto settingsPath = mCfgMgr.getUserConfigPath() / "settings.cfg";
-    try
-    {
-        Settings::Manager::saveUser(settingsPath);
-    }
-    catch (std::exception& e)
-    {
-        std::string msg = "<br><b>Error writing settings.cfg</b><br><br>" + Files::pathToUnicodeString(settingsPath)
-            + "<br><br>" + e.what();
-        cfgError(tr("Error writing user settings file"), tr(msg.c_str()));
-        return false;
-    }
 
     // Launcher settings
     file.setFileName(Files::pathToQString(userPath / Config::LauncherSettings::sLauncherConfigFileName));
