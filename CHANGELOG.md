@@ -1,25 +1,25 @@
 V6:
-Removed unnecessary elements from the launcher.
-Forced the use of English encoding for unsupported languages.
+- Removed unnecessary elements from the launcher.
+- Forced the use of English encoding for unsupported languages.
 
 V5:
-Added the launch parameter --clear-output-dirs to clear map output directories before starting.
-Added a prompt to clear map output directories.
+- Added the launch parameter --clear-output-dirs to clear map output directories before starting.
+- Added a prompt to clear map output directories.
 
 V4:
-The game world is now paused during the process.
-By default, interior local map textures are now scaling up to fit unused texture space.
-Added the launch parameter --use-constant-scale to use a constant scale for all local map textures instead of scaling them to fit the unused texture space.
+- The game world is now paused during the process.
+- By default, interior local map textures are now scaling up to fit unused texture space.
+- Added the launch parameter --use-constant-scale to use a constant scale for all local map textures instead of scaling them to fit the unused texture space.
 
 V3:
-Fixed scaling of local map textures.
-External shaders and Lua scripts embedded in mod files are now ignored.
-Added the launch parameter --local-map-size to configure the output image size of local maps.
-Added the launch parameter --use-original-settings to use the resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
-Added a prompt to overwrite existing local maps.
+- Fixed scaling of local map textures.
+- External shaders and Lua scripts embedded in mod files are now ignored.
+- Added the launch parameter --local-map-size to configure the output image size of local maps.
+- Added the launch parameter --use-original-settings to use the resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
+- Added a prompt to overwrite existing local maps.
 
 V2:
-New world map save format.
-Added the ability to outline the borders of areas above water level for the world map texture.
-Added new launch parameters: --world-map-border, --world-map-pixelsPerCell.
-Changed the behavior of the --tilemap-downscale-factor launch parameter.
+- New world map save format.
+- Added the ability to outline the borders of areas above water level for the world map texture.
+- Added new launch parameters: --world-map-border, --world-map-pixelsPerCell.
+- Changed the behavior of the --tilemap-downscale-factor launch parameter.
