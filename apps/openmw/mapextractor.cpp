@@ -95,7 +95,7 @@ namespace OMW
 
     MapExtractor::~MapExtractor() = default;
 
-    void MapExtractor::extractWorldMap(int cellSize, int borderWidth)
+    void MapExtractor::extractWorldMap(int cellSize, int borderWidth, bool waterAlphaMode)
     {
         Log(Debug::Info) << "Extracting world map...";
 
@@ -119,11 +119,12 @@ namespace OMW
         Settings::map().mGlobalMapCellSize.set(cellSize);
 
         mGlobalMap->setBorderWidth(borderWidth);
+        mGlobalMap->setWaterAlphaMode(waterAlphaMode);
         mGlobalMap->render();
         mGlobalMap->ensureLoaded();
 
         saveWorldMapTexture();
-        saveWorldMapTextureBlocks();
+        saveWorldMapTextureBlocks(waterAlphaMode);
         saveWorldMapInfo();
 
         // Restore original cell size
@@ -153,7 +154,7 @@ namespace OMW
         Log(Debug::Info) << "Saved world map texture: " << outputPath;
     }
 
-    void MapExtractor::saveWorldMapTextureBlocks()
+    void MapExtractor::saveWorldMapTextureBlocks(bool waterAlphaMode)
     {
         osg::ref_ptr<osg::Texture2D> baseTexture = mGlobalMap->getBaseTexture();
         if (!baseTexture || !baseTexture->getImage())
@@ -205,6 +206,7 @@ namespace OMW
         unsigned char bgR = static_cast<unsigned char>(bgColor.x() * 255);
         unsigned char bgG = static_cast<unsigned char>(bgColor.y() * 255);
         unsigned char bgB = static_cast<unsigned char>(bgColor.z() * 255);
+        unsigned char bgA = waterAlphaMode ? 0 : 255;
 
         Log(Debug::Info) << "Saving world map blocks (" << (maxBlockX - minBlockX + 1) 
                         << "x" << (maxBlockY - minBlockY + 1) << ")...";
@@ -243,7 +245,7 @@ namespace OMW
                         blockData[idx + 1] = bgG;
                         blockData[idx + 2] = bgB;
                         if (pixelSize == 4)
-                            blockData[idx + 3] = 255;
+                            blockData[idx + 3] = bgA;
                     }
                 }
 
@@ -353,6 +355,7 @@ namespace OMW
         file << "width: " << width << "\n";
         file << "height: " << height << "\n";
         file << "pixelsPerCell: " << Settings::map().mGlobalMapCellSize << "\n";
+        file << "waterWithAlpha: " << (mGlobalMap->getWaterAlphaMode() ? "true" : "false") << "\n";
         file << "gridX:\n";
         file << "  min: " << minX << "\n";
         file << "  max: " << maxX << "\n";

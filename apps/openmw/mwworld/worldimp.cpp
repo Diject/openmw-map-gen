@@ -3935,14 +3935,14 @@ namespace MWWorld
         return false;
     }
 
-    void World::extractWorldMap(int cellSize, int borderWidth)
+    void World::extractWorldMap(int cellSize, int borderWidth, bool waterAlphaMode)
     {
         if (!mMapExtractor)
         {
             mMapExtractor = std::make_unique<OMW::MapExtractor>(
                 mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore);
         }
-        mMapExtractor->extractWorldMap(cellSize, borderWidth);
+        mMapExtractor->extractWorldMap(cellSize, borderWidth, waterAlphaMode);
     }
 
     void World::extractLocalMaps(bool playerCellOnly)

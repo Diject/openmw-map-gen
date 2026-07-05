@@ -132,7 +132,7 @@ namespace MWRender
     {
     public:
         CreateMapWorkItem(int width, int height, int minX, int minY, int maxX, int maxY, int cellSize,
-            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut, int borderWidth)
+            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut, int borderWidth, bool waterAlpha)
             : mWidth(width)
             , mHeight(height)
             , mMinX(minX)
@@ -143,13 +143,14 @@ namespace MWRender
             , mLandStore(landStore)
             , mColorLut(colorLut)
             , mBorderWidth(borderWidth)
+            , mWaterAlpha(waterAlpha)
         {
         }
 
         void doWork() override
         {
             osg::ref_ptr<osg::Image> image = new osg::Image;
-            image->allocateImage(mWidth, mHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
+            image->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
 
             osg::ref_ptr<osg::Image> alphaImage = new osg::Image;
             alphaImage->allocateImage(mWidth, mHeight, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
@@ -187,7 +188,12 @@ namespace MWRender
                                     int texelX = (x - mMinX) * mCellSize + cellX;
                                     int texelY = (y - mMinY) * mCellSize + cellY;
 
+                                    float alphaVal = 1.0f;
+                                    if (normalizedHeight < 0.0f)
+                                        alphaVal = mWaterAlpha ? std::clamp(1.0f + normalizedHeight, 0.0f, 1.0f) : 1.0f;
+
                                     osg::Vec4 color = mColorLut->getColor(lutIndex, 0);
+                                    color[3] = alphaVal;
                                     image->setColor(color, texelX, texelY);
 
                                     osg::Vec4 alpha(0.0f, 0.0f, 0.0f, lutIndex < 128 ? 0.0f : 1.0f);
@@ -206,6 +212,9 @@ namespace MWRender
                                 int texelY = (y - mMinY) * mCellSize + cellY;
 
                                 osg::Vec4 color = mColorLut->getColor(0, 0);
+                                if (mWaterAlpha)
+                                    color[3] = 0.0f;
+
                                 image->setColor(color, texelX, texelY);
 
                                 // Set alpha based on lutIndex threshold
@@ -319,6 +328,7 @@ namespace MWRender
         const MWWorld::Store<ESM::Land>& mLandStore;
         osg::ref_ptr<osg::Image> mColorLut;
         int mBorderWidth;
+        bool mWaterAlpha;
 
         osg::ref_ptr<osg::Texture2D> mBaseTexture;
         osg::ref_ptr<osg::Texture2D> mAlphaTexture;
@@ -350,6 +360,7 @@ namespace MWRender
         , mMinY(0)
         , mMaxY(0)
         , mBorderWidth(0)
+        , mWaterAlpha(true)
     {
     }
 
@@ -400,13 +411,23 @@ namespace MWRender
         }
 
         mWorkItem = new CreateMapWorkItem(
-            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), mColorLut, mBorderWidth);
+            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), mColorLut, mBorderWidth, mWaterAlpha);
         mWorkQueue->addWorkItem(mWorkItem);
     }
 
     void GlobalMap::setBorderWidth(int borderWidth)
     {
         mBorderWidth = borderWidth;
+    }
+
+    void GlobalMap::setWaterAlphaMode(bool waterAlpha)
+    {
+        mWaterAlpha = waterAlpha;
+    }
+
+    bool GlobalMap::getWaterAlphaMode() const
+    {
+        return mWaterAlpha;
     }
 
     void GlobalMap::worldPosToImageSpace(float x, float z, float& imageX, float& imageY)
