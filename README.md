@@ -38,16 +38,17 @@ Files with the `.omwscripts` extension are not loaded by this build.
 Command-line options (fork-specific)
 -----------------------------------
 ```
---world-map-output=""          Directory to save the world map texture. Default: `./textures/advanced_world_map/custom/`
---local-map-output=""          Directory to save local map textures. Default: `./textures/advanced_world_map/local/`
---clear-output-dirs            Clear output directories (png and yaml files) before starting.
---overwrite-maps               Allow overwriting existing local map files. By default local maps are not overwritten.
---tilemap-downscale-factor=-1  If set to a positive integer N, enables generation of the world map texture based on local map tiles downscaled by a factor of N.
---world-map-pixelsPerCell=32   The number of pixels per cell for the world map texture. Default: 32.
---world-map-border=2           The number of pixels to add as a border around terrain above water level in the world map texture. Default: 2.
---local-map-size=256           Size of output local map images in pixels. Default: 256. Overrides 'local map resolution' setting from settings.cfg.
---use-original-settings        Use settings for resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
---use-constant-scale           Use a constant scale for interior local map textures instead of scaling them to fit the unused texture space.
+--world-map-output=""            Directory to save the world map texture. Default: `./textures/advanced_world_map/custom/`
+--local-map-output=""            Directory to save local map textures. Default: `./textures/advanced_world_map/local/`
+--clear-output-dirs              Clear output directories (png and yaml files) before starting.
+--overwrite-maps                 Allow overwriting existing local map files. By default local maps are not overwritten.
+--tilemap-downscale-factor=-1    If set to a positive integer N, enables generation of the world map texture based on local map tiles downscaled by a factor of N.
+--world-map-pixelsPerCell=32     The number of pixels per cell for the world map texture. Default: 32.
+--world-map-border=2             The number of pixels to add as a border around terrain above water level in the world map texture. Default: 2.
+--world-map-disable-water-alpha  Disable water transparency for the world map texture.
+--local-map-size=256             Size of output local map images in pixels. Default: 256. Overrides 'local map resolution' setting from settings.cfg.
+--use-original-settings          Use settings for resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
+--use-constant-scale             Use a constant scale for interior local map textures instead of scaling them to fit the unused texture space.
 ```
 
 Notes

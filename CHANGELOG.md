@@ -1,3 +1,6 @@
+V7:
+- Added the launch parameter --world-map-disable-water-alpha to disable water transparency for the world map texture.
+
 V6:
 - Removed unnecessary elements from the launcher.
 - Forced the use of English encoding for unsupported languages.

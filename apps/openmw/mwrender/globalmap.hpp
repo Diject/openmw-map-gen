@@ -78,6 +78,8 @@ namespace MWRender
         osg::Vec3f getBackgroundColor() const;
 
         void setBorderWidth(int borderWidth);
+        void setWaterAlphaMode(bool waterAlpha);
+        bool getWaterAlphaMode() const;
 
     private:
         struct WritePng;
@@ -138,6 +140,7 @@ namespace MWRender
         int mMinX, mMaxX, mMinY, mMaxY;
         
         int mBorderWidth;
+        bool mWaterAlpha;
     };
 
 }

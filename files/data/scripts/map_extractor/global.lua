@@ -154,8 +154,9 @@ local function start()
         local parametes = world.getLaunchParameters()
         local pixPerCell = tonumber(parametes["world-map-pixelsPerCell"]) or 32
         local borderSize = tonumber(parametes["world-map-border"]) or 2
+        local disableWaterAlpha = parametes["world-map-disable-water-alpha"] == "true"
 
-        world.extractWorldMap(pixPerCell, borderSize)
+        world.extractWorldMap(pixPerCell, borderSize, not disableWaterAlpha)
         if not world.getOverwriteFlag() then
             for _, cellId in pairs(world.getExistingLocalMapIds() or {}) do
                 visitedCells[cellId] = true
