@@ -698,7 +698,7 @@ namespace MWWorld
         bool isMapExtractionActive() const override;
 
         void saveToLocalMapDir(std::string_view filename, std::string_view stringData) override;
-        void generateTileWorldMap(const osg::Vec3f& backgroundColor) override;
+        void generateTileWorldMap(const osg::Vec3f& backgroundColor, bool waterAlphaMode = true) override;
         
         void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
         void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }

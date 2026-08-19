@@ -59,7 +59,9 @@ local function generateTilemap()
     })
 
     realTimer.new(1, function ()
-        world.generateTileWorldMap(util.color.rgb(0.255, 0.243, 0.212))
+        local parametes = world.getLaunchParameters()
+        local disableWaterAlpha = parametes["world-map-disable-water-alpha"] == "true"
+        world.generateTileWorldMap(util.color.rgb(0.255, 0.243, 0.212), not disableWaterAlpha)
         showCompletionMessage()
     end)
 end
