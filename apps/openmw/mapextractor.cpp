@@ -17,6 +17,7 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
+#include <components/misc/convert.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/workqueue.hpp>
 #include <components/settings/values.hpp>
@@ -25,6 +26,8 @@
 #include "mwbase/mechanicsmanager.hpp"
 #include "mwbase/windowmanager.hpp"
 #include "mwbase/world.hpp"
+#include "mwphysics/collisiontype.hpp"
+#include "mwphysics/raycasting.hpp"
 #include "mwrender/globalmap.hpp"
 #include "mwrender/localmap.hpp"
 #include "mwrender/renderingmanager.hpp"
@@ -678,6 +681,7 @@ namespace OMW
         if (osgDB::writeImageFile(*outputImage, outputPath.string()))
         {
             Log(Debug::Info) << "Successfully saved local map for cell (" << x << "," << y << ") to " << outputPath;
+            saveExteriorCellHeights(cellStore);
             return true;
         }
         else
@@ -685,6 +689,57 @@ namespace OMW
             Log(Debug::Warning) << "Failed to write texture for cell (" << x << "," << y << ") to " << outputPath;
             return false;
         }
+    }
+
+    void MapExtractor::saveExteriorCellHeights(const MWWorld::CellStore* cellStore)
+    {
+        const MWPhysics::RayCastingInterface* rayCasting = MWBase::Environment::get().getWorld()->getRayCasting();
+        if (!rayCasting)
+            return;
+
+        const int x = cellStore->getCell()->getGridX();
+        const int y = cellStore->getCell()->getGridY();
+
+        constexpr int gridSize = 65;
+        constexpr float step = static_cast<float>(Constants::CellSizeInUnits) / static_cast<float>(gridSize - 1);
+        constexpr float rayTop = 20000.0f;
+        constexpr float rayBottom = -10000.0f;
+
+        std::vector<float> heights(gridSize * gridSize);
+        const int mask = MWPhysics::CollisionType_World | MWPhysics::CollisionType_HeightMap
+            | MWPhysics::CollisionType_Door;
+
+        for (int gy = 0; gy < gridSize; ++gy)
+        {
+            for (int gx = 0; gx < gridSize; ++gx)
+            {
+                const float worldX = x * Constants::CellSizeInUnits + gx * step;
+                const float worldY = y * Constants::CellSizeInUnits + gy * step;
+
+                const MWPhysics::RayCastingResult result = rayCasting->castRay(
+                    osg::Vec3f(worldX, worldY, rayTop), osg::Vec3f(worldX, worldY, rayBottom), mask);
+
+                heights[gy * gridSize + gx] = result.mHit ? result.mHitPos.z() : rayBottom;
+            }
+        }
+
+        std::ostringstream filename;
+        filename << "(" << x << "," << y << ").heights";
+        std::filesystem::path outputPath = mLocalMapOutputDir / filename.str();
+
+        std::ofstream file(outputPath, std::ios::binary | std::ios::trunc);
+        if (!file)
+        {
+            Log(Debug::Warning) << "Failed to create heights file: " << outputPath;
+            return;
+        }
+
+        file.write(reinterpret_cast<const char*>(heights.data()),
+            static_cast<std::streamsize>(heights.size() * sizeof(float)));
+        file.close();
+
+        if (!file)
+            Log(Debug::Warning) << "Failed to write heights file: " << outputPath;
     }
 
     bool MapExtractor::extractInteriorCell(const MWWorld::CellStore* cellStore, bool forceOverwrite)

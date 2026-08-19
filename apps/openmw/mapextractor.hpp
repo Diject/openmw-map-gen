@@ -97,6 +97,7 @@ namespace OMW
         
         bool extractExteriorCell(const MWWorld::CellStore* cellStore, bool forceOverwrite);
         bool extractInteriorCell(const MWWorld::CellStore* cellStore, bool forceOverwrite);
+        void saveExteriorCellHeights(const MWWorld::CellStore* cellStore);
         void saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName);
         void saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId, 
                                  int segmentsX, int segmentsY);

@@ -4201,16 +4201,58 @@ namespace MWWorld
             }
         }
 
-        // Step 3.5: Compute alpha channel from land height data (same logic as globalmap.cpp)
+        // Step 3.5: Compute alpha channel from height data
+        // Prefer raycast-based heights (saved during cell extraction), fall back to VHGT
         if (waterAlphaMode)
         {
             const int vhgtSize = 65;
+            std::filesystem::path localMapPath(mLocalMapOutputPath);
 
             for (const auto& [coords, filepath] : tileFiles)
             {
                 int gridX = coords.first;
                 int gridY = coords.second;
 
+                int destX = (gridX - minX) * targetSize;
+                int destY = (gridY - minY) * targetSize;
+
+                // Try raycast-based heights first
+                std::ostringstream heightsFn;
+                heightsFn << "(" << gridX << "," << gridY << ").heights";
+                std::filesystem::path heightsPath = localMapPath / heightsFn.str();
+
+                std::ifstream heightsFile(heightsPath, std::ios::binary);
+                if (heightsFile)
+                {
+                    std::vector<float> rayHeights(vhgtSize * vhgtSize);
+                    heightsFile.read(reinterpret_cast<char*>(rayHeights.data()),
+                        static_cast<std::streamsize>(rayHeights.size() * sizeof(float)));
+
+                    if (heightsFile.gcount() == static_cast<std::streamsize>(rayHeights.size() * sizeof(float)))
+                    {
+                        for (int ty = 0; ty < targetSize; ++ty)
+                        {
+                            int vy = (ty * (vhgtSize - 1)) / targetSize;
+                            for (int tx = 0; tx < targetSize; ++tx)
+                            {
+                                int vx = (tx * (vhgtSize - 1)) / targetSize;
+
+                                float heightVal = rayHeights[vy * vhgtSize + vx] / 128.0f;
+                                float normalizedHeight = heightVal / (heightVal > 0.0f ? 128.0f : 16.0f);
+
+                                float alphaVal = 1.0f;
+                                if (normalizedHeight < 0.0f)
+                                    alphaVal = std::clamp(1.0f + normalizedHeight * 2.f, 0.0f, 1.0f);
+
+                                unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
+                                dstPixel[3] = static_cast<unsigned char>(alphaVal * 255.0f);
+                            }
+                        }
+                        continue; // used raycast heights, skip VHGT
+                    }
+                }
+
+                // Fall back to VHGT
                 const ESM::Land* land = mStore.get<ESM::Land>().search(gridX, gridY);
                 if (!land || !(land->mDataTypes & ESM::Land::DATA_VHGT))
                     continue;
@@ -4219,9 +4261,6 @@ namespace MWWorld
                 const ESM::Land::LandData* ld = land->getLandData(ESM::Land::DATA_VHGT);
                 if (!ld)
                     continue;
-
-                int destX = (gridX - minX) * targetSize;
-                int destY = (gridY - minY) * targetSize;
 
                 for (int ty = 0; ty < targetSize; ++ty)
                 {
@@ -4236,7 +4275,7 @@ namespace MWWorld
 
                         float alphaVal = 1.0f;
                         if (normalizedHeight < 0.0f)
-                            alphaVal = std::clamp(1.0f + normalizedHeight, 0.0f, 1.0f);
+                            alphaVal = std::clamp(1.0f + normalizedHeight * 2.f, 0.0f, 1.0f);
 
                         unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
                         dstPixel[3] = static_cast<unsigned char>(alphaVal * 255.0f);

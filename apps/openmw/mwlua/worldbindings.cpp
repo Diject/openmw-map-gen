@@ -397,7 +397,7 @@ namespace MWLua
                     if (entry.is_regular_file())
                     {
                         std::string ext = entry.path().extension().string();
-                        if (ext == ".yaml" || ext == ".png")
+                        if (ext == ".yaml" || ext == ".png" || ext == ".heights")
                         {
                             std::filesystem::remove(entry.path());
                         }
@@ -405,7 +405,9 @@ namespace MWLua
                 }
             };
 
-            clearDir(MWBase::Environment::get().getWorld()->getWorldMapOutputPath());
+            auto worldMapPath = MWBase::Environment::get().getWorld()->getWorldMapOutputPath();
+            clearDir(worldMapPath);
+            clearDir((std::filesystem::path(worldMapPath) / "tilemap").string());
             clearDir(MWBase::Environment::get().getWorld()->getLocalMapOutputPath());
         };
 

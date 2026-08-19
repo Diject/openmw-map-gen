@@ -235,7 +235,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
                 if (entry.is_regular_file())
                 {
                     std::string ext = entry.path().extension().string();
-                    if (ext == ".yaml" || ext == ".png")
+                    if (ext == ".yaml" || ext == ".png" || ext == ".heights")
                     {
                         std::filesystem::remove(entry.path());
                     }
@@ -244,6 +244,8 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
         };
 
         clearDir(worldMapOutput);
+        std::filesystem::path tilemapDir = std::filesystem::path(worldMapOutput) / "tilemap";
+        clearDir(tilemapDir.string());
         clearDir(localMapOutput);
     }
 
