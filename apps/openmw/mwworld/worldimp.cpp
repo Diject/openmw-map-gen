@@ -256,7 +256,7 @@ namespace MWWorld
     }
 
     World::World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, int localMapSize, const std::map<std::string, std::filesystem::path>& contentFileDirs)
+        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, bool keepTempData, int tilemapDownscaleFactor, int localMapSize, const std::map<std::string, std::filesystem::path>& contentFileDirs)
         : mResourceSystem(resourceSystem)
         , mLocalScripts(mStore)
         , mWorldModel(mStore, mReaders)
@@ -272,6 +272,7 @@ namespace MWWorld
         , mLocalMapOutputPath(localMapOutputPath)
         , mTilemapDownscaleFactor(tilemapDownscaleFactor)
         , mLocalMapSize(localMapSize)
+        , mKeepTempData(keepTempData)
         , mContentFileDirs(contentFileDirs)
         , mSwimHeightScale(0.f)
         , mDistanceToFocusObject(-1.f)
@@ -4248,6 +4249,9 @@ namespace MWWorld
                                 dstPixel[3] = static_cast<unsigned char>(alphaVal * 255.0f);
                             }
                         }
+                        heightsFile.close();
+                        if (!mKeepTempData)
+                            std::filesystem::remove(heightsPath);
                         continue; // used raycast heights, skip VHGT
                     }
                 }

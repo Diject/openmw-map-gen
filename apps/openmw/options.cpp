@@ -104,6 +104,9 @@ namespace OpenMW
         addOption("overwrite-maps", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "overwrite existing map files during extraction");
 
+        addOption("keep-temp-data", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "keep temporary .heights files after tilemap generation");
+
         addOption("clear-output-dirs", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "clear output directories (png and yaml files) before starting");
 

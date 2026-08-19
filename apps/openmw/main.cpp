@@ -219,6 +219,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.setWorldMapOutput(worldMapOutput);
     engine.setLocalMapOutput(localMapOutput);
     engine.setOverwriteMaps(variables["overwrite-maps"].as<bool>());
+    engine.setKeepTempData(variables["keep-temp-data"].as<bool>());
     engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
     int localMapSize = variables["local-map-size"].as<int>();
     engine.setLocalMapSize(localMapSize);

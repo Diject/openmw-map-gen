@@ -126,6 +126,7 @@ namespace MWWorld
         std::string mLocalMapOutputPath;
         int mTilemapDownscaleFactor;
         int mLocalMapSize;
+        bool mKeepTempData;
         std::map<std::string, std::filesystem::path> mContentFileDirs;
         float mSwimHeightScale;
 
@@ -203,7 +204,7 @@ namespace MWWorld
         void removeContainerScripts(const Ptr& reference) override;
 
         World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-            const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, int tilemapDownscaleFactor, int localMapSize = 256, const std::map<std::string, std::filesystem::path>& contentFileDirs = {});
+            const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, bool keepTempData, int tilemapDownscaleFactor, int localMapSize = 256, const std::map<std::string, std::filesystem::path>& contentFileDirs = {});
 
         void loadData(const Files::Collections& fileCollections, const std::vector<std::string>& contentFiles,
             const std::vector<std::string>& groundcoverFiles, ToUTF8::Utf8Encoder* encoder,
