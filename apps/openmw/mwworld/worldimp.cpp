@@ -4208,6 +4208,7 @@ namespace MWWorld
         {
             const int vhgtSize = 65;
             std::filesystem::path localMapPath(mLocalMapOutputPath);
+            std::vector<std::filesystem::path> heightsToRemove;
 
             for (const auto& [coords, filepath] : tileFiles)
             {
@@ -4250,8 +4251,7 @@ namespace MWWorld
                             }
                         }
                         heightsFile.close();
-                        if (!mKeepTempData)
-                            std::filesystem::remove(heightsPath);
+                        heightsToRemove.push_back(heightsPath);
                         continue; // used raycast heights, skip VHGT
                     }
                 }
@@ -4296,6 +4296,13 @@ namespace MWWorld
                     }
                 }
             }
+
+            if (!mKeepTempData)
+                for (const auto& p : heightsToRemove)
+                {
+                    std::error_code ec;
+                    std::filesystem::remove(p, ec);
+                }
         }
 
         // Step 4: Save map.png
