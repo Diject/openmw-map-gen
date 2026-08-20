@@ -693,6 +693,15 @@ namespace OMW
 
     void MapExtractor::saveExteriorCellHeights(const MWWorld::CellStore* cellStore)
     {
+        // Only save heights if water alpha mode is enabled, since heights are only relevant for tilemap water transparency
+        const auto& launchParams = MWBase::Environment::get().getLaunchParameters();
+        auto it = launchParams.find("tilemap-downscale-factor");
+        if (it != launchParams.end() && it->second == "-1")
+            return;
+        it = launchParams.find("world-map-disable-water-alpha");
+        if (it != launchParams.end() && it->second == "true")
+            return;
+
         const MWPhysics::RayCastingInterface* rayCasting = MWBase::Environment::get().getWorld()->getRayCasting();
         if (!rayCasting)
             return;
