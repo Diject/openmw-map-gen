@@ -114,7 +114,7 @@ namespace OpenMW
             "use constant scale for interior maps instead of increasing scale to fit unused texture space");
 
         addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(8),
-            "downscale factor for tilemap generation (must be power of 2, default: -1 - disabled)");
+            "downscale factor for tilemap generation (must be power of 2, default: 8, -1 - disabled)");
 
         addOption("world-map-pixelsPerCell", bpo::value<int>()->default_value(32),
             "pixel size for one cell on the world map texture. [1-64]. Default: 32");
