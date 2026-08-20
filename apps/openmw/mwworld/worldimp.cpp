@@ -4259,7 +4259,17 @@ namespace MWWorld
                 // Fall back to VHGT
                 const ESM::Land* land = mStore.get<ESM::Land>().search(gridX, gridY);
                 if (!land || !(land->mDataTypes & ESM::Land::DATA_VHGT))
+                {
+                    for (int ty = 0; ty < targetSize; ++ty)
+                    {
+                        for (int tx = 0; tx < targetSize; ++tx)
+                        {
+                            unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
+                            dstPixel[3] = 0.0f;
+                        }
+                    }
                     continue;
+                }
 
                 land->loadData(ESM::Land::DATA_VHGT);
                 const ESM::Land::LandData* ld = land->getLandData(ESM::Land::DATA_VHGT);
