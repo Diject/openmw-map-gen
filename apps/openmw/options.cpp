@@ -104,14 +104,17 @@ namespace OpenMW
         addOption("overwrite-maps", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "overwrite existing map files during extraction");
 
+        addOption("keep-temp-data", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "keep temporary .heights files after tilemap generation");
+
         addOption("clear-output-dirs", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "clear output directories (png and yaml files) before starting");
 
         addOption("use-constant-scale", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "use constant scale for interior maps instead of increasing scale to fit unused texture space");
 
-        addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(-1),
-            "downscale factor for tilemap generation (must be power of 2, default: -1 - disabled)");
+        addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(8),
+            "downscale factor for tilemap generation (must be power of 2, default: 8, -1 - disabled)");
 
         addOption("world-map-pixelsPerCell", bpo::value<int>()->default_value(32),
             "pixel size for one cell on the world map texture. [1-64]. Default: 32");

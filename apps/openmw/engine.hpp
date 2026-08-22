@@ -186,6 +186,7 @@ namespace OMW
         std::string mWorldMapOutput;
         std::string mLocalMapOutput;
         bool mOverwriteMaps;
+        bool mKeepTempData;
         int mTilemapDownscaleFactor;
         int mLocalMapSize;
         std::map<std::string, std::filesystem::path> mContentFileDirs;
@@ -277,6 +278,8 @@ namespace OMW
         void setLocalMapOutput(const std::string& path);
 
         void setOverwriteMaps(bool overwrite);
+
+        void setKeepTempData(bool keep);
 
         void setTilemapDownscaleFactor(int factor);
 

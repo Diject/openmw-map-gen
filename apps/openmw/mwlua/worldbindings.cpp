@@ -360,16 +360,17 @@ namespace MWLua
                 "saveToLocalMapDirAction");
         };
 
-        api["generateTileWorldMap"] = [context, lua = context.mLua](sol::optional<Misc::Color> backgroundColor) {
+        api["generateTileWorldMap"] = [context, lua = context.mLua](sol::optional<Misc::Color> backgroundColor, sol::optional<bool> waterAlphaMode) {
             checkGameInitialized(lua);
             context.mLuaManager->addAction(
-                [backgroundColor]() {
+                [backgroundColor, waterAlphaMode]() {
                     osg::Vec3f bgColor(0.255f, 0.224f, 0.180f);
                     if (backgroundColor.has_value())
                     {
                         bgColor = osg::Vec3f(backgroundColor->r(), backgroundColor->g(), backgroundColor->b());
                     }
-                    MWBase::Environment::get().getWorld()->generateTileWorldMap(bgColor);
+                    const bool waterAlpha = waterAlphaMode.value_or(true);
+                    MWBase::Environment::get().getWorld()->generateTileWorldMap(bgColor, waterAlpha);
                 },
                 "generateTileWorldMapAction");
         };
@@ -396,7 +397,7 @@ namespace MWLua
                     if (entry.is_regular_file())
                     {
                         std::string ext = entry.path().extension().string();
-                        if (ext == ".yaml" || ext == ".png")
+                        if (ext == ".yaml" || ext == ".png" || ext == ".heights")
                         {
                             std::filesystem::remove(entry.path());
                         }
@@ -404,7 +405,9 @@ namespace MWLua
                 }
             };
 
-            clearDir(MWBase::Environment::get().getWorld()->getWorldMapOutputPath());
+            auto worldMapPath = MWBase::Environment::get().getWorld()->getWorldMapOutputPath();
+            clearDir(worldMapPath);
+            clearDir((std::filesystem::path(worldMapPath) / "tilemap").string());
             clearDir(MWBase::Environment::get().getWorld()->getLocalMapOutputPath());
         };
 

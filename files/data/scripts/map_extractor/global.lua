@@ -12,6 +12,7 @@ local i = cellCount
 local lastTimestamp = core.getRealTime() - 50
 local timeFromLast = 50
 local onlyPlayerCell = true
+local isTilemapGenerated = false
 
 local step = 0
 
@@ -46,6 +47,8 @@ end
 
 
 local function generateTilemap()
+    if isTilemapGenerated then return end
+
     if world.isMapExtractionActive() then
         realTimer.new(1, generateTilemap)
         return
@@ -59,7 +62,11 @@ local function generateTilemap()
     })
 
     realTimer.new(1, function ()
-        world.generateTileWorldMap(util.color.rgb(0.255, 0.243, 0.212))
+        if isTilemapGenerated then return end
+        local parametes = world.getLaunchParameters()
+        local disableWaterAlpha = parametes["world-map-disable-water-alpha"] == "true"
+        world.generateTileWorldMap(util.color.rgb(0.0941177, 0.141176, 0.129412), not disableWaterAlpha)
+        isTilemapGenerated = true
         showCompletionMessage()
     end)
 end

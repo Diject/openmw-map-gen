@@ -219,6 +219,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
     engine.setWorldMapOutput(worldMapOutput);
     engine.setLocalMapOutput(localMapOutput);
     engine.setOverwriteMaps(variables["overwrite-maps"].as<bool>());
+    engine.setKeepTempData(variables["keep-temp-data"].as<bool>());
     engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
     int localMapSize = variables["local-map-size"].as<int>();
     engine.setLocalMapSize(localMapSize);
@@ -235,7 +236,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
                 if (entry.is_regular_file())
                 {
                     std::string ext = entry.path().extension().string();
-                    if (ext == ".yaml" || ext == ".png")
+                    if (ext == ".yaml" || ext == ".png" || ext == ".heights")
                     {
                         std::filesystem::remove(entry.path());
                     }
@@ -244,6 +245,8 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
         };
 
         clearDir(worldMapOutput);
+        std::filesystem::path tilemapDir = std::filesystem::path(worldMapOutput) / "tilemap";
+        clearDir(tilemapDir.string());
         clearDir(localMapOutput);
     }
 
