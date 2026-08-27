@@ -74,7 +74,19 @@ jobs:
         cp esmtool AppDir/usr/bin/
         cp openmw-navmeshtool AppDir/usr/bin/ || true
         cp openmw-bulletobjecttool AppDir/usr/bin/ || true
-        cp org.openmw.launcher.desktop AppDir/usr/share/applications/
+        cat > AppDir/usr/share/applications/openmw.desktop <<'EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=OpenMW
+        GenericName=Role Playing Game
+        Comment=An engine replacement for The Elder Scrolls III: Morrowind
+        Keywords=Morrowind;Reimplementation Mods;esm;bsa;
+        TryExec=openmw
+        Exec=openmw
+        Icon=openmw
+        Categories=Game;RolePlaying;
+        StartupWMClass=openmw
+        EOF
         cp files/launcher/images/openmw.png AppDir/usr/share/icons/hicolor/256x256/apps/openmw.png
 
     - name: Download linuxdeploy
@@ -90,7 +102,7 @@ jobs:
         export QMAKE=$(command -v qmake6 || command -v qmake)
         ./linuxdeploy-x86_64.AppImage \
           --appdir AppDir \
-          --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
+          --desktop-file AppDir/usr/share/applications/openmw.desktop \
           --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/openmw.png \
           --executable AppDir/usr/bin/openmw \
           --executable AppDir/usr/bin/openmw-launcher \
