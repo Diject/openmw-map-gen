@@ -17,7 +17,9 @@ jobs:
       run: sudo add-apt-repository ppa:openmw/openmw; sudo apt-get update
 
     - name: Install Building Dependencies
-      run: sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
+      run: |
+        sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-static
+        sudo apt-get install -y libfreetype6-dev
 
     - name: Prime ccache
       uses: hendrikmuhs/ccache-action@v1
@@ -31,14 +33,49 @@ jobs:
         -D CMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
         -D OPENMW_USE_SYSTEM_RECASTNAVIGATION=ON
         -D USE_SYSTEM_TINYXML=ON
-        -D CMAKE_INSTALL_PREFIX=/usr
+        -D BUILD_COMPONENTS_TESTS=ON
+        -D BUILD_OPENMW_TESTS=ON
+        -D BUILD_OPENCS_TESTS=ON
+        -D CMAKE_INSTALL_PREFIX=.
+        -D OPENMW_USE_SYSTEM_MYGUI=OFF
+        -D MYGUI_STATIC=ON
+        -D OPENMW_USE_SYSTEM_OSG=OFF
+        -D OSG_STATIC=ON
+        -D OPENMW_USE_SYSTEM_RECASTNAVIGATION=OFF
+        -D RECASTNAVIGATION_STATIC=ON
 
     - name: Build
       run: cmake --build . -- -j$(nproc)
 
-    - name: Install into AppDir
+    - name: Run components tests
+      run: ./components-tests
+
+    - name: Run OpenMW tests
+      run: ./openmw-tests
+
+    - name: Run OpenMW-CS tests
+      run: ./openmw-cs-tests
+
+    - name: Assemble AppDir
+      shell: bash
       run: |
-        cmake --install . --prefix "$PWD/AppDir/usr"
+        mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+        cp -r resources AppDir/usr/bin/
+        cp defaults.bin AppDir/usr/bin/
+        cp gamecontrollerdb.txt AppDir/usr/bin/
+        cp openmw.cfg AppDir/usr/bin/
+        cp openmw AppDir/usr/bin/
+        cp openmw-launcher AppDir/usr/bin/
+        cp openmw-cs AppDir/usr/bin/
+        cp openmw-wizard AppDir/usr/bin/
+        cp openmw-iniimporter AppDir/usr/bin/
+        cp openmw-essimporter AppDir/usr/bin/
+        cp bsatool AppDir/usr/bin/
+        cp esmtool AppDir/usr/bin/
+        cp openmw-navmeshtool AppDir/usr/bin/ || true
+        cp openmw-bulletobjecttool AppDir/usr/bin/ || true
+        cp org.openmw.launcher.desktop AppDir/usr/share/applications/
+        cp files/launcher/images/openmw.png AppDir/usr/share/icons/hicolor/256x256/apps/openmw.png
 
     - name: Download linuxdeploy
       run: |
@@ -54,7 +91,7 @@ jobs:
         ./linuxdeploy-x86_64.AppImage \
           --appdir AppDir \
           --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
-          --icon-file AppDir/usr/share/pixmaps/openmw.png \
+          --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/openmw.png \
           --executable AppDir/usr/bin/openmw \
           --executable AppDir/usr/bin/openmw-launcher \
           --plugin qt \
