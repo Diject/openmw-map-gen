@@ -1,0 +1,67 @@
+name: Linux-AppImage
+
+on:
+- workflow_dispatch
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  Ubuntu-AppImage:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add OpenMW PPA Dependencies
+      run: sudo add-apt-repository ppa:openmw/openmw; sudo apt-get update
+
+    - name: Install Building Dependencies
+      run: sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
+
+    - name: Prime ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: linux-appimage-${{ env.BUILD_TYPE }}
+        max-size: 1000M
+
+    - name: Configure
+      run: >
+        cmake .
+        -D CMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -D OPENMW_USE_SYSTEM_RECASTNAVIGATION=ON
+        -D USE_SYSTEM_TINYXML=ON
+        -D CMAKE_INSTALL_PREFIX=/usr
+
+    - name: Build
+      run: cmake --build . -- -j$(nproc)
+
+    - name: Install into AppDir
+      run: |
+        cmake --install . --prefix "$PWD/AppDir/usr"
+
+    - name: Download linuxdeploy
+      run: |
+        wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+    - name: Build AppImage
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: 1
+      run: |
+        export QMAKE=$(command -v qmake6 || command -v qmake)
+        ./linuxdeploy-x86_64.AppImage \
+          --appdir AppDir \
+          --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
+          --icon-file AppDir/usr/share/pixmaps/openmw.png \
+          --executable AppDir/usr/bin/openmw \
+          --executable AppDir/usr/bin/openmw-launcher \
+          --plugin qt \
+          --output appimage
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        path: ./OpenMW*.AppImage
+        name: openmw-linux-appimage
