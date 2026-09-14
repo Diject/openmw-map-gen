@@ -178,7 +178,12 @@ void ContentSelectorView::ContentSelector::setEncoding(const QString& encoding)
     mContentModel->setEncoding(encoding);
 }
 
-void ContentSelectorView::ContentSelector::setContentList(const QStringList& list)
+QStringList ContentSelectorView::ContentSelector::allFilesInOrder() const
+{
+    return mContentModel->allFilesInOrder();
+}
+
+void ContentSelectorView::ContentSelector::setContentList(const QStringList& list, bool orderOnly)
 {
     if (list.isEmpty())
     {

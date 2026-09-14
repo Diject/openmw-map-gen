@@ -652,7 +652,20 @@ bool ContentSelectorModel::ContentModel::isLoadOrderError(const EsmFile* file) c
     return !errors.empty();
 }
 
-void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileList)
+QStringList ContentSelectorModel::ContentModel::allFilesInOrder() const
+{
+    QStringList result;
+    result.reserve(mFiles.size());
+    for (const EsmFile* file : mFiles)
+    {
+        if (file->builtIn() || file->fromAnotherConfigFile())
+            continue;
+        result.append(file->fileName());
+    }
+    return result;
+}
+
+void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileList, bool orderOnly)
 {
     QProgressDialog progressDialog("Setting content list", {}, 0, static_cast<int>(fileList.size()));
     progressDialog.setWindowModality(Qt::WindowModal);
