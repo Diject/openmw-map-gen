@@ -486,7 +486,7 @@ void Launcher::DataFilesPage::populateFileViews(const QString& contentModelName)
     }
     mSelector->setNonUserContent(nonUserContent);
     mSelector->setProfileContent(mLauncherSettings.getContentListFiles(contentModelName),
-        mLauncherSettings.getContentListOrder(contentModelName));
+        mLauncherSettings.getAllContentListFiles(contentModelName));
 }
 
 void Launcher::DataFilesPage::saveSettings(const QString& profile)
