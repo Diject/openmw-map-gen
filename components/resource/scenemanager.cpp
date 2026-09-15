@@ -2,11 +2,13 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 
 #include <osg/AlphaFunc>
 #include <osg/Capability>
 #include <osg/ColorMaski>
 #include <osg/Group>
+#include <osg/Material>
 #include <osg/Node>
 #include <osg/UserDataContainer>
 
@@ -128,6 +130,56 @@ namespace
 
     private:
         unsigned int mMask;
+    };
+
+    class ReplaceMaterialVisitor : public osg::NodeVisitor
+    {
+    public:
+        ReplaceMaterialVisitor()
+            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
+        {
+        }
+
+        void apply(osg::Node& node) override
+        {
+            osg::StateSet* stateSet = node.getStateSet();
+
+            if (stateSet)
+            {
+                if (osg::Material* material
+                    = dynamic_cast<osg::Material*>(stateSet->getAttribute(osg::StateAttribute::MATERIAL)))
+                    stateSet->setAttribute(new SceneUtil::Material({
+                        .mDiffuse = material->getDiffuse(osg::Material::FRONT_AND_BACK),
+                        .mAmbient = material->getAmbient(osg::Material::FRONT_AND_BACK),
+                        .mSpecular = material->getSpecular(osg::Material::FRONT_AND_BACK),
+                        .mEmission = material->getEmission(osg::Material::FRONT_AND_BACK),
+                        .mShininess = material->getShininess(osg::Material::FRONT_AND_BACK),
+                        .mVertexColorMode = fromOSGColorMode(material->getColorMode()),
+                    }));
+            };
+
+            traverse(node);
+        }
+
+    private:
+        SceneUtil::VertexColorModes fromOSGColorMode(osg::Material::ColorMode mode)
+        {
+            switch (mode)
+            {
+                case osg::Material::AMBIENT:
+                    return SceneUtil::VertexColorModes::Ambient;
+                case osg::Material::DIFFUSE:
+                    return SceneUtil::VertexColorModes::Diffuse;
+                case osg::Material::SPECULAR:
+                    return SceneUtil::VertexColorModes::Specular;
+                case osg::Material::EMISSION:
+                    return SceneUtil::VertexColorModes::Emission;
+                case osg::Material::AMBIENT_AND_DIFFUSE:
+                    return SceneUtil::VertexColorModes::AmbientAndDiffuse;
+                default:
+                    return SceneUtil::VertexColorModes::None;
+            }
+        }
     };
 }
 
@@ -452,28 +504,15 @@ namespace Resource
         , mMagFilter(osg::Texture::LINEAR)
         , mMaxAnisotropy(1.f)
         , mParticleSystemMask(~0u)
-        , mLightingMethod(SceneUtil::LightingMethod::FFP)
     {
     }
 
-    void SceneManager::setForceShaders(bool force)
-    {
-        mForceShaders = force;
-    }
-
-    bool SceneManager::getForceShaders() const
-    {
-        return mForceShaders;
-    }
-
-    void SceneManager::recreateShaders(osg::ref_ptr<osg::Node> node, const std::string& shaderPrefix,
-        bool forceShadersForNode, const osg::Program* programTemplate)
+    void SceneManager::recreateShaders(
+        osg::ref_ptr<osg::Node> node, const std::string& shaderPrefix, const osg::Program* programTemplate)
     {
         osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(createShaderVisitor(shaderPrefix));
         shaderVisitor->setAllowedToModifyStateSets(false);
         shaderVisitor->setProgramTemplate(programTemplate);
-        if (forceShadersForNode)
-            shaderVisitor->setForceShaders(true);
         node->accept(*shaderVisitor);
     }
 
@@ -482,16 +521,6 @@ namespace Resource
         osg::ref_ptr<Shader::ReinstateRemovedStateVisitor> reinstateRemovedStateVisitor
             = new Shader::ReinstateRemovedStateVisitor(false);
         node->accept(*reinstateRemovedStateVisitor);
-    }
-
-    void SceneManager::setClampLighting(bool clamp)
-    {
-        mClampLighting = clamp;
-    }
-
-    bool SceneManager::getClampLighting() const
-    {
-        return mClampLighting;
     }
 
     void SceneManager::setAutoUseNormalMaps(bool use)
@@ -519,36 +548,14 @@ namespace Resource
         mSpecularMapPattern = pattern;
     }
 
-    void SceneManager::setApplyLightingToEnvMaps(bool apply)
+    void SceneManager::setSupportsClusteredLighting(bool supported)
     {
-        mApplyLightingToEnvMaps = apply;
+        mSupportsClusteredLighting = supported;
     }
 
-    void SceneManager::setSupportedLightingMethods(const SceneUtil::LightManager::SupportedMethods& supported)
+    bool SceneManager::isClusteredLightingSupported() const
     {
-        mSupportedLightingMethods = supported;
-    }
-
-    bool SceneManager::isSupportedLightingMethod(SceneUtil::LightingMethod method) const
-    {
-        return mSupportedLightingMethods[static_cast<int>(method)];
-    }
-
-    void SceneManager::setLightingMethod(SceneUtil::LightingMethod method)
-    {
-        mLightingMethod = method;
-
-        if (mLightingMethod == SceneUtil::LightingMethod::SingleUBO)
-        {
-            osg::ref_ptr<osg::Program> program = new osg::Program;
-            program->addBindUniformBlock("LightBufferBinding", static_cast<int>(UBOBinding::LightBuffer));
-            mShaderManager->setProgramTemplate(program);
-        }
-    }
-
-    SceneUtil::LightingMethod SceneManager::getLightingMethod() const
-    {
-        return mLightingMethod;
+        return mSupportsClusteredLighting;
     }
 
     void SceneManager::setConvertAlphaTestToAlphaToCoverage(bool convert)
@@ -569,6 +576,16 @@ namespace Resource
     osg::ref_ptr<osg::Texture> SceneManager::getOpaqueDepthTex(size_t frame)
     {
         return mOpaqueDepthTex[frame % 2];
+    }
+
+    void SceneManager::setOpaqueColorTex(osg::ref_ptr<osg::Texture> texturePing, osg::ref_ptr<osg::Texture> texturePong)
+    {
+        mOpaqueColorTex = { texturePing, texturePong };
+    }
+
+    osg::ref_ptr<osg::Texture> SceneManager::getOpaqueColorTex(size_t frame)
+    {
+        return mOpaqueColorTex[frame % 2];
     }
 
     SceneManager::~SceneManager()
@@ -642,12 +659,8 @@ namespace Resource
             const bool isColladaFile = ext == "dae";
             osgDB::ReaderWriter* reader = osgDB::Registry::instance()->getReaderWriterForExtension(std::string(ext));
             if (!reader)
-            {
-                std::stringstream errormsg;
-                errormsg << "Error loading " << normalizedFilename << ": no readerwriter for '" << ext << "' found"
-                         << std::endl;
-                throw std::runtime_error(errormsg.str());
-            }
+                throw std::runtime_error(
+                    std::format("Error loading {}: no readerwriter for '{}' found", normalizedFilename.value(), ext));
 
             osg::ref_ptr<osgDB::Options> options(new osgDB::Options);
             // Set a ReadFileCallback so that image files referenced in the model are read from our virtual file system
@@ -662,12 +675,8 @@ namespace Resource
 
             osgDB::ReaderWriter::ReadResult result = reader->readNode(model, options);
             if (!result.success())
-            {
-                std::stringstream errormsg;
-                errormsg << "Error loading " << normalizedFilename << ": " << result.message() << " code "
-                         << result.status() << std::endl;
-                throw std::runtime_error(errormsg.str());
-            }
+                throw std::runtime_error(std::format("Error loading {}: {} code {}", normalizedFilename.value(),
+                    result.message(), static_cast<int>(result.status())));
 
             // Recognize and hide collision node
             unsigned int hiddenNodeMask = 0;
@@ -692,6 +701,9 @@ namespace Resource
             // Replace osg::Depth with reverse-Z-compatible SceneUtil::AutoDepth
             SceneUtil::ReplaceDepthVisitor replaceDepthVisitor;
             node->accept(replaceDepthVisitor);
+
+            ReplaceMaterialVisitor replaceMaterialVisitor;
+            node->accept(replaceMaterialVisitor);
 
             for (osg::Node* foundRigNode : rigFinder.mFoundNodes)
             {
@@ -750,8 +762,6 @@ namespace Resource
                     }
                 }
 
-                node->getOrCreateStateSet()->addUniform(new osg::Uniform("emissiveMult", 1.f));
-                node->getOrCreateStateSet()->addUniform(new osg::Uniform("specStrength", 1.f));
                 node->getOrCreateStateSet()->addUniform(new osg::Uniform("envMapColor", osg::Vec4f(1, 1, 1, 1)));
                 node->getOrCreateStateSet()->addUniform(new osg::Uniform("useFalloff", false));
                 node->getOrCreateStateSet()->addUniform(new osg::Uniform("distortionStrength", 0.f));
@@ -1063,6 +1073,9 @@ namespace Resource
             }
         }
         osg::ref_ptr<osg::Node> cloned = static_cast<osg::Node*>(base->clone(copyop));
+
+        copyop.remapControllerTargets();
+
         // add a ref to the original template to help verify the safety of shallow cloning operations
         // in addition, if this node is managed by a cache, we hint to the cache that it's still being used and should
         // be kept in cache
@@ -1242,13 +1255,11 @@ namespace Resource
     {
         osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(
             new Shader::ShaderVisitor(*mShaderManager.get(), *mImageManager, shaderPrefix));
-        shaderVisitor->setForceShaders(mForceShaders);
         shaderVisitor->setAutoUseNormalMaps(mAutoUseNormalMaps);
         shaderVisitor->setNormalMapPattern(mNormalMapPattern);
         shaderVisitor->setNormalHeightMapPattern(mNormalHeightMapPattern);
         shaderVisitor->setAutoUseSpecularMaps(mAutoUseSpecularMaps);
         shaderVisitor->setSpecularMapPattern(mSpecularMapPattern);
-        shaderVisitor->setApplyLightingToEnvMaps(mApplyLightingToEnvMaps);
         shaderVisitor->setConvertAlphaTestToAlphaToCoverage(mConvertAlphaTestToAlphaToCoverage);
         shaderVisitor->setAdjustCoverageForAlphaTest(mAdjustCoverageForAlphaTest);
         shaderVisitor->setSupportsNormalsRT(mSupportsNormalsRT);

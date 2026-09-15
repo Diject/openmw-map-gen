@@ -4,8 +4,6 @@
 
 #include <osg/ComputeBoundsVisitor>
 #include <osg/Fog>
-#include <osg/LightModel>
-#include <osg/LightSource>
 #include <osg/PolygonMode>
 #include <osg/Texture2D>
 
@@ -17,6 +15,7 @@
 #include <components/files/memorystream.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/depth.hpp>
+#include <components/sceneutil/fog.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/rtt.hpp>
@@ -782,10 +781,15 @@ namespace MWRender
             return;
         }
 
-        osgDB::ReaderWriter* readerwriter = osgDB::Registry::instance()->getReaderWriterForExtension("png");
+        // Saves at or below ESM::MaxOldFogOfWarFormatVersion hold TGA here, newer ones PNG.
+        // Decoding the legacy format directly is why components/esm3 no longer has to
+        // transcode it to PNG on load, which cost a decode and a re-encode per tile.
+        const std::string extension = esm.mLegacyTgaImageData ? "tga" : "png";
+
+        osgDB::ReaderWriter* readerwriter = osgDB::Registry::instance()->getReaderWriterForExtension(extension);
         if (!readerwriter)
         {
-            Log(Debug::Error) << "Error: Unable to load fog, can't find a png ReaderWriter";
+            Log(Debug::Error) << "Error: Unable to load fog, can't find a " << extension << " ReaderWriter";
             return;
         }
 
@@ -888,43 +892,27 @@ namespace MWRender
         if (Stereo::getMultiview())
             Stereo::setMultiviewMatrices(stateset, { mProjectionMatrix, mProjectionMatrix });
 
-        // assign large value to effectively turn off fog
-        // shaders don't respect glDisable(GL_FOG)
-        osg::ref_ptr<osg::Fog> fog(new osg::Fog);
-        fog->setStart(10000000);
-        fog->setEnd(10000000);
-        stateset->setAttributeAndModes(fog, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+        SceneUtil::disableFog(*stateset, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
 
         // turn of sky blending
         stateset->addUniform(new osg::Uniform("far", 10000000.0f));
         stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
         stateset->addUniform(new osg::Uniform("screenRes", osg::Vec2f{ 1, 1 }));
 
-        osg::ref_ptr<osg::LightModel> lightmodel = new osg::LightModel;
-        lightmodel->setAmbientIntensity(osg::Vec4(0.3f, 0.3f, 0.3f, 1.f));
-        stateset->setAttributeAndModes(lightmodel, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
-
-        osg::ref_ptr<osg::Light> light = new osg::Light;
+        osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
         light->setPosition(osg::Vec4(-0.3f, -0.3f, 0.7f, 0.f));
         light->setDiffuse(osg::Vec4(0.7f, 0.7f, 0.7f, 1.f));
-        light->setAmbient(osg::Vec4(0, 0, 0, 1));
+        light->setAmbient(osg::Vec4(0.3f, 0.3f, 0.3f, 1.f));
         light->setSpecular(osg::Vec4(0, 0, 0, 0));
-        light->setLightNum(0);
         light->setConstantAttenuation(1.f);
         light->setLinearAttenuation(0.f);
         light->setQuadraticAttenuation(0.f);
 
-        osg::ref_ptr<osg::LightSource> lightSource = new osg::LightSource;
-        lightSource->setLight(light);
-
-        lightSource->setStateSetModes(*stateset, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
-
         SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
 
         // override sun for local map
-        SceneUtil::configureStateSetSunOverride(static_cast<SceneUtil::LightManager*>(mSceneRoot), light, stateset);
+        SceneUtil::configureStateSetSunOverride(light, stateset);
 
-        camera->addChild(lightSource);
         camera->addChild(mSceneRoot);
         
         // CRITICAL: Attach an Image to COLOR_BUFFER to enable pixel readback from FBO

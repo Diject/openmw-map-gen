@@ -57,7 +57,7 @@ namespace MWGui
             box->setUserString("ToolTipLayout", "AttributeToolTip");
             box->setUserString("Caption_AttributeName", attribute.mName);
             box->setUserString("Caption_AttributeDescription", attribute.mDescription);
-            box->setUserString("ImageTexture_AttributeImage", attribute.mIcon);
+            box->setUserString("ImageTexture_AttributeImage", attribute.mIcon.getNormalized());
             coord.top += coord.height;
             auto* name = box->createWidget<MyGUI::TextBox>("SandText", { 0, 0, 160, 18 }, alignment);
             name->setNeedMouseFocus(false);
@@ -309,10 +309,10 @@ namespace MWGui
         }
     }
 
-    void StatsWindow::configureSkills(const std::vector<ESM::RefId>& major, const std::vector<ESM::RefId>& minor)
+    void StatsWindow::configureSkills(std::span<const ESM::RefId> major, std::span<const ESM::RefId> minor)
     {
-        mMajorSkills = major;
-        mMinorSkills = minor;
+        mMajorSkills.assign(major.begin(), major.end());
+        mMinorSkills.assign(minor.begin(), minor.end());
 
         // Update misc skills with the remaining skills not in major or minor
         std::set<ESM::RefId> skillSet;
@@ -513,8 +513,7 @@ namespace MWGui
                 continue;
             }
 
-            const ESM::Attribute* attr
-                = esmStore.get<ESM::Attribute>().find(ESM::Attribute::indexToRefId(skill->mData.mAttribute));
+            const ESM::Attribute* attr = esmStore.get<ESM::Attribute>().find(skill->mData.mAttribute);
 
             std::pair<MyGUI::TextBox*, MyGUI::TextBox*> widgets
                 = addValueItem(skill->mName, {}, "normal", coord1, coord2);
@@ -530,7 +529,8 @@ namespace MWGui
                     "Caption_SkillDescription", skill->mDescription);
                 mSkillWidgets[mSkillWidgets.size() - 1 - i]->setUserString("Caption_SkillAttribute",
                     "#{sGoverningAttribute}: " + MyGUI::TextIterator::toTagsString(attr->mName));
-                mSkillWidgets[mSkillWidgets.size() - 1 - i]->setUserString("ImageTexture_SkillImage", skill->mIcon);
+                mSkillWidgets[mSkillWidgets.size() - 1 - i]->setUserString(
+                    "ImageTexture_SkillImage", skill->mIcon.getNormalized());
                 mSkillWidgets[mSkillWidgets.size() - 1 - i]->setUserString("Range_SkillProgress", "100");
             }
 
@@ -594,7 +594,7 @@ namespace MWGui
             for (const auto& [factionId, factionRank] : mFactions)
             {
                 const ESM::Faction* faction = store.get<ESM::Faction>().find(factionId);
-                if (faction->mData.mIsHidden == 1)
+                if (faction->mData.mFlags & ESM::Faction::Hidden)
                     continue;
 
                 if (firstFaction)
@@ -628,10 +628,8 @@ namespace MWGui
                         text += std::string("\n\n#{fontcolourhtml=header}#{sNextRank} ") + faction->mRanks[rank + 1];
 
                         const ESM::RankData& rankData = faction->mData.mRankData[rank + 1];
-                        const ESM::Attribute* attr1 = store.get<ESM::Attribute>().find(
-                            ESM::Attribute::indexToRefId(faction->mData.mAttribute[0]));
-                        const ESM::Attribute* attr2 = store.get<ESM::Attribute>().find(
-                            ESM::Attribute::indexToRefId(faction->mData.mAttribute[1]));
+                        const ESM::Attribute* attr1 = store.get<ESM::Attribute>().find(faction->mData.mAttribute[0]);
+                        const ESM::Attribute* attr2 = store.get<ESM::Attribute>().find(faction->mData.mAttribute[1]);
 
                         text += "\n#{fontcolourhtml=normal}" + MyGUI::TextIterator::toTagsString(attr1->mName) + ": "
                             + MyGUI::utility::toString(rankData.mAttribute1) + ", "
@@ -641,9 +639,9 @@ namespace MWGui
                         text += "\n\n#{fontcolourhtml=header}#{sFavoriteSkills}";
                         text += "\n#{fontcolourhtml=normal}";
                         bool firstSkill = true;
-                        for (int id : faction->mData.mSkills)
+                        for (const ESM::RefId& id : faction->mData.mSkills)
                         {
-                            const ESM::Skill* skill = store.get<ESM::Skill>().search(ESM::Skill::indexToRefId(id));
+                            const ESM::Skill* skill = store.get<ESM::Skill>().search(id);
                             if (skill)
                             {
                                 if (!firstSkill)

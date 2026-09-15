@@ -1,5 +1,7 @@
 #include "loadcrea.hpp"
 
+#include <array>
+
 #include <components/debug/debuglog.hpp>
 #include <components/misc/concepts.hpp>
 
@@ -8,11 +10,76 @@
 
 namespace ESM
 {
-    template <Misc::SameAsWithoutCvref<Creature::NPDTstruct> T>
+    namespace
+    {
+        struct EsmNPDTstruct
+        {
+            int32_t mType;
+            int32_t mLevel;
+            std::array<int32_t, Attribute::Length> mAttributes;
+            int32_t mHealth, mMana, mFatigue;
+            int32_t mSoul;
+            int32_t mCombat, mMagic, mStealth;
+            int32_t mAttack[6];
+            int32_t mGold;
+        };
+
+        void toBinary(const Creature::NPDTstruct& src, EsmNPDTstruct& dst)
+        {
+            dst.mType = src.mType;
+            dst.mLevel = src.mLevel;
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+            {
+                const ESM::RefId id = ESM::Attribute::indexToRefId(i);
+                dst.mAttributes[i] = src.getAttribute(id);
+            }
+            dst.mHealth = src.mHealth;
+            dst.mMana = src.mMana;
+            dst.mFatigue = src.mFatigue;
+            dst.mSoul = src.mSoul;
+            dst.mCombat = src.mCombat;
+            dst.mMagic = src.mMagic;
+            dst.mStealth = src.mStealth;
+            for (std::size_t i = 0; i < std::size(dst.mAttack); ++i)
+                dst.mAttack[i] = src.mAttack[i];
+            dst.mGold = src.mGold;
+        }
+
+        void fromBinary(const EsmNPDTstruct& src, Creature::NPDTstruct& dst)
+        {
+            dst.mType = src.mType;
+            dst.mLevel = src.mLevel;
+            dst.mAttributes.clear();
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+            {
+                const ESM::RefId id = ESM::Attribute::indexToRefId(i);
+                dst.mAttributes.emplace(id, src.mAttributes[i]);
+            }
+            dst.mHealth = src.mHealth;
+            dst.mMana = src.mMana;
+            dst.mFatigue = src.mFatigue;
+            dst.mSoul = src.mSoul;
+            dst.mCombat = src.mCombat;
+            dst.mMagic = src.mMagic;
+            dst.mStealth = src.mStealth;
+            for (std::size_t i = 0; i < std::size(dst.mAttack); ++i)
+                dst.mAttack[i] = src.mAttack[i];
+            dst.mGold = src.mGold;
+        }
+    }
+
+    template <Misc::SameAsWithoutCvref<EsmNPDTstruct> T>
     void decompose(T&& v, const auto& f)
     {
         f(v.mType, v.mLevel, v.mAttributes, v.mHealth, v.mMana, v.mFatigue, v.mSoul, v.mCombat, v.mMagic, v.mStealth,
             v.mAttack, v.mGold);
+    }
+
+    template <Misc::SameAsWithoutCvref<Creature::NPDTstruct> T>
+    void decompose(T&& v, const auto& f)
+    {
+        f(v.mType, v.mLevel, v.mHealth, v.mMana, v.mFatigue, v.mSoul, v.mCombat, v.mMagic, v.mStealth, v.mAttack,
+            v.mGold);
     }
 
     void Creature::load(ESMReader& esm, bool& isDeleted)
@@ -55,9 +122,28 @@ namespace ESM
                     mScript = esm.getRefId();
                     break;
                 case fourCC("NPDT"):
-                    esm.getSubComposite(mData);
+                {
+                    if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+                    {
+                        EsmNPDTstruct data;
+                        esm.getSubComposite(data);
+                        fromBinary(data, mData);
+                    }
+                    else
+                    {
+                        esm.getSubComposite(mData);
+                        while (esm.isNextSub("ATTR"))
+                        {
+                            esm.getSubHeader();
+                            int32_t value;
+                            esm.getT(value);
+                            ESM::RefId attribute = esm.getRefId(esm.getSubSize() - sizeof(value));
+                            mData.mAttributes.emplace(attribute, value);
+                        }
+                    }
                     hasNpdt = true;
                     break;
+                }
                 case fourCC("FLAG"):
                     int flags;
                     esm.getHT(flags);
@@ -123,11 +209,30 @@ namespace ESM
             return;
         }
 
-        esm.writeHNCString("MODL", mModel);
+        esm.writeHNCString("MODL", mModel.getOriginal());
         esm.writeHNOCRefId("CNAM", mOriginal);
         esm.writeHNOCString("FNAM", mName);
         esm.writeHNOCRefId("SCRI", mScript);
-        esm.writeNamedComposite("NPDT", mData);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            EsmNPDTstruct data;
+            toBinary(mData, data);
+            esm.writeNamedComposite("NPDT", data);
+        }
+        else
+        {
+            esm.writeNamedComposite("NPDT", mData);
+            for (const auto& [attribute, value] : mData.mAttributes)
+            {
+                if (!attribute.empty() && value != 0)
+                {
+                    esm.startSubRecord("ATTR");
+                    esm.writeT(value);
+                    esm.writeHRefId(attribute);
+                    esm.endRecord("ATTR");
+                }
+            }
+        }
         esm.writeHNT("FLAG", ((mBloodType << 10) + mFlags));
         if (mScale != 1.0)
         {
@@ -146,7 +251,7 @@ namespace ESM
         mRecordFlags = 0;
         mData.mType = 0;
         mData.mLevel = 0;
-        mData.mAttributes.fill(0);
+        mData.mAttributes.clear();
         mData.mHealth = mData.mMana = mData.mFatigue = 0;
         mData.mSoul = 0;
         mData.mCombat = mData.mMagic = mData.mStealth = 0;
@@ -172,5 +277,13 @@ namespace ESM
     const std::vector<Transport::Dest>& Creature::getTransport() const
     {
         return mTransport.mList;
+    }
+
+    int32_t Creature::NPDTstruct::getAttribute(ESM::RefId id) const
+    {
+        const auto it = mAttributes.find(id);
+        if (it != mAttributes.end())
+            return it->second;
+        return 0;
     }
 }

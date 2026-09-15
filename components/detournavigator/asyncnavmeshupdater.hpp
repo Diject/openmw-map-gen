@@ -232,10 +232,13 @@ namespace DetourNavigator
         std::vector<std::thread> mThreads;
         std::unique_ptr<DbWorker> mDbWorker;
         std::atomic_size_t mDbGetTileHits{ 0 };
+        std::atomic_size_t mPostedCount{ 0 };
 
         void process() noexcept;
 
         JobStatus processJob(Job& job);
+
+        inline JobStatus markAsEmpty(const Job& job, GuardedNavMeshCacheItem& navMeshCacheItem);
 
         inline JobStatus processInitialJob(Job& job, GuardedNavMeshCacheItem& navMeshCacheItem);
 

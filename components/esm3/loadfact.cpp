@@ -5,14 +5,17 @@
 #include "esmreader.hpp"
 #include "esmwriter.hpp"
 
+#include <components/esm/attr.hpp>
+#include <components/esm3/loadskil.hpp>
+
 namespace ESM
 {
-    int32_t& Faction::FADTstruct::getSkill(size_t index, bool)
+    ESM::RefId& Faction::FADTstruct::getSkill(size_t index, bool)
     {
         return mSkills.at(index);
     }
 
-    int32_t Faction::FADTstruct::getSkill(size_t index, bool) const
+    ESM::RefId Faction::FADTstruct::getSkill(size_t index, bool) const
     {
         return mSkills.at(index);
     }
@@ -38,24 +41,61 @@ namespace ESM
     void Faction::FADTstruct::load(ESMReader& esm)
     {
         esm.getSubHeader();
-        esm.getT(mAttribute);
-        for (auto& rank : mRankData)
-            rank.load(esm);
-        esm.getT(mSkills);
-        esm.getT(mIsHidden);
-        if (mIsHidden > 1)
-            esm.fail("Unknown flag!");
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            int32_t attributes[2];
+            esm.getT(attributes);
+            mAttribute[0] = ESM::Attribute::indexToRefId(attributes[0]);
+            mAttribute[1] = ESM::Attribute::indexToRefId(attributes[1]);
+            for (auto& rank : mRankData)
+                rank.load(esm);
+            int32_t skills[7];
+            esm.getT(skills);
+            for (std::size_t i = 0; i < std::size(skills); ++i)
+                mSkills[i] = ESM::Skill::indexToRefId(skills[i]);
+            esm.getT(mFlags);
+        }
+        else
+        {
+            for (auto& rank : mRankData)
+                rank.load(esm);
+            esm.getT(mFlags);
+            for (size_t i = 0; i < mAttribute.size() && esm.isNextSub("ATTR"); ++i)
+                mAttribute[i] = esm.getRefId();
+            for (size_t i = 0; i < mSkills.size() && esm.isNextSub("SKIL"); ++i)
+                mSkills[i] = esm.getRefId();
+        }
     }
 
     void Faction::FADTstruct::save(ESMWriter& esm) const
     {
-        esm.startSubRecord("FADT");
-        esm.writeT(mAttribute);
-        for (const auto& rank : mRankData)
-            rank.save(esm);
-        esm.writeT(mSkills);
-        esm.writeT(mIsHidden);
-        esm.endRecord("FADT");
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            esm.startSubRecord("FADT");
+            esm.writeT(ESM::Attribute::refIdToIndex(mAttribute[0]));
+            esm.writeT(ESM::Attribute::refIdToIndex(mAttribute[1]));
+            for (const auto& rank : mRankData)
+                rank.save(esm);
+            for (const ESM::RefId& id : mSkills)
+            {
+                int32_t skill = ESM::Skill::refIdToIndex(id);
+                esm.writeT(skill);
+            }
+            esm.writeT(mFlags);
+            esm.endRecord("FADT");
+        }
+        else
+        {
+            esm.startSubRecord("FADT");
+            for (const auto& rank : mRankData)
+                rank.save(esm);
+            esm.writeT(mFlags);
+            esm.endRecord("FADT");
+            for (const ESM::RefId& id : mAttribute)
+                esm.writeHNOCRefId("ATTR", id);
+            for (const ESM::RefId& id : mSkills)
+                esm.writeHNOCRefId("SKIL", id);
+        }
     }
 
     void Faction::load(ESMReader& esm, bool& isDeleted)
@@ -153,20 +193,26 @@ namespace ESM
     {
         mRecordFlags = 0;
         mName.clear();
-        mData.mAttribute.fill(0);
-        mData.mIsHidden = 0;
+        mData.mAttribute.fill({});
+        mData.mFlags = 0;
 
         for (size_t i = 0; i < mData.mRankData.size(); ++i)
         {
-            mData.mRankData[i].mAttribute1 = mData.mRankData[i].mAttribute2 = 0;
-            mData.mRankData[i].mPrimarySkill = mData.mRankData[i].mFavouredSkill = 0;
-            mData.mRankData[i].mFactReputation = 0;
-
+            mData.mRankData[i].blank();
             mRanks[i].clear();
         }
 
-        mData.mSkills.fill(0);
+        mData.mSkills.fill({});
 
         mReactions.clear();
+    }
+
+    void RankData::blank()
+    {
+        mAttribute1 = 0;
+        mAttribute2 = 0;
+        mPrimarySkill = 0;
+        mFavouredSkill = 0;
+        mFactReputation = 0;
     }
 }

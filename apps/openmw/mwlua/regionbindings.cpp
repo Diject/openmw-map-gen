@@ -1,6 +1,10 @@
 #include "regionbindings.hpp"
 #include "recordstore.hpp"
 
+#include <algorithm>
+#include <span>
+#include <stdexcept>
+
 #include <components/esm3/loadregn.hpp>
 #include <components/esm3/loadsoun.hpp>
 #include <components/lua/luastate.hpp>
@@ -50,13 +54,30 @@ namespace MWLua
 
         regionT["weatherProbabilities"] = sol::readonly_property([lua = lua.lua_state()](const ESM::Region& rec) {
             sol::table res(lua, sol::create);
-            for (size_t i = 0; i < rec.mData.mProbabilities.size(); ++i)
+            const MWBase::World* world = MWBase::Environment::get().getWorld();
+            const auto& chances = world->getRegionWeatherChances(rec.mId);
+            for (const MWWorld::Weather* weather : world->getAllWeather())
             {
-                const MWWorld::Weather* weather = MWBase::Environment::get().getWorld()->getWeather(i);
-                res[weather->mId.serializeText()] = rec.mData.mProbabilities[i];
+                const auto found = chances.find(weather->mId);
+                if (found == chances.end())
+                    res[weather->mId] = 0;
+                else
+                    res[weather->mId] = found->second;
             }
             return LuaUtil::makeReadOnly(res);
         });
+        regionT["setProbability"] = [](const ESM::Region& rec, std::string_view weatherId, int value) {
+            MWBase::World* world = MWBase::Environment::get().getWorld();
+            ESM::RefId id = ESM::RefId::deserializeText(weatherId);
+            const MWWorld::Weather* weather = world->getAllWeather().find(id);
+            auto chances = world->getRegionWeatherChances(rec.mId);
+            chances[weather->mId] = static_cast<uint8_t>(std::clamp(value, 0, 100));
+            world->modRegion(rec.mId, chances);
+        };
+        auto resetProbability = [](const ESM::Region& rec) {
+            MWBase::Environment::get().getWorld()->modRegion(rec.mId, rec.mData.mProbabilities);
+        };
+        regionT["resetProbability"] = resetProbability;
         regionT["sounds"] = sol::readonly_property([lua = lua.lua_state()](const ESM::Region& rec) {
             sol::table res(lua, sol::create);
             for (const auto& soundRef : rec.mSoundList)

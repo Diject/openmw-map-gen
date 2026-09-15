@@ -31,7 +31,7 @@ add_openmw_dir (mwrender
     creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation screenshotmanager
     bulletdebugdraw globalmap characterpreview camera localmap water terrainstorage ripplesimulation
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectpaging groundcover
-    postprocessor pingpongcull luminancecalculator pingpongcanvas transparentpass precipitationocclusion ripples
+    postprocessor pingpongcull luminancecalculator pingpongcanvas transparentpass opaqueblit waterawaretransparentbin precipitationocclusion ripples
     actorutil distortion animationpriority bonegroup blendmask animblendcontroller
     )
 
@@ -57,7 +57,7 @@ add_openmw_dir (mwgui
     )
 
 add_openmw_dir (mwdialogue
-    dialoguemanagerimp journalimp journalentry quest topic filter selectwrapper hypertextparser keywordsearch scripttest
+    dialoguemanagerimp journalimp journalentry quest topic filter selectwrapper keywordsearch scripttest
     )
 
 add_openmw_dir (mwscript
@@ -68,19 +68,19 @@ add_openmw_dir (mwscript
     )
 
 add_openmw_dir (mwlua
-    luamanagerimp object objectlists userdataserializer luaevents engineevents objectvariant
+    luamanagerimp object objectlists userdataserializer luaevents engineevents objectvariant loadscripts contentbindings
     context menuscripts globalscripts localscripts playerscripts luabindings objectbindings cellbindings coremwscriptbindings
     mwscriptbindings camerabindings vfsbindings uibindings soundbindings inputbindings nearbybindings dialoguebindings
     postprocessingbindings stats recordstore debugbindings corebindings worldbindings worker landbindings magicbindings factionbindings
     classbindings itemdata inputprocessor animationbindings birthsignbindings racebindings markupbindings weatherbindings regionbindings
-    types/types types/door types/item types/actor types/container types/lockable types/weapon types/npc
+    types/types types/door types/item types/actor types/container types/lockable types/weapon types/npc types/bodypart
     types/creature types/player types/activator types/book types/lockpick types/probe types/apparatus
     types/potion types/ingredient types/misc types/repair types/armor types/light types/static
-    types/clothing types/levelledlist types/terminal
+    types/clothing types/levelledlist types/terminal magictypebindings
     )
 
 add_openmw_dir (mwsound
-    soundmanagerimp openaloutput ffmpegdecoder sound soundbuffer sounddecoder soundoutput
+    soundmanagerimp openaloutput ffmpegdecoder headcache warmqueue sound soundbuffer sounddecoder soundoutput
     loudness movieaudiofactory alext efx efxpresets regionsoundselector watersoundupdater
     )
 
@@ -131,6 +131,22 @@ add_library(openmw-lib STATIC
     ${OPENMW_FILES}
     ${OPENMW_SOURCES}
 )
+
+if (MSVC)
+    # these TUs take a lot of memory for codegen
+    # in CI, they often go over the 8GB memory limit if another cl.exe is running at the same time
+    # this option (make sure you're not looking at the docs for the identically-named linker option) stops four codegen threads being spun off
+    # it hurts build time ~33% to enable this unnecessarily, though, so target it to the hungriest boys
+    set_source_files_properties(
+        mwlua/dialoguebindings.cpp
+        mwlua/magicbindings.cpp
+        mwlua/objectbindings
+        mwlua/stats.cpp
+        mwworld/esmstore.cpp
+        PROPERTIES
+        COMPILE_OPTIONS /cgthreads1
+    )
+endif()
 
 if(BUILD_OPENMW)
     if (ANDROID)
@@ -210,8 +226,6 @@ if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)
     )
 endif()
 
-add_definitions(-DMYGUI_DONT_USE_OBSOLETE=ON)
-
 if (ANDROID)
     target_link_libraries(openmw-lib EGL android log z)
 endif (ANDROID)
@@ -266,6 +280,6 @@ if (BUILD_WITH_CODE_COVERAGE)
     endif()
 endif()
 
-if (WIN32 AND BUILD_OPENMW)
-    INSTALL(TARGETS openmw RUNTIME DESTINATION ".")
+if (NOT APPLE AND BUILD_OPENMW)
+    INSTALL(TARGETS openmw)
 endif()

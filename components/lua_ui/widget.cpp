@@ -1,7 +1,20 @@
 #include "widget.hpp"
+#include "components/lua/utilpackage.hpp"
+#include "components/lua_ui/util.hpp"
+#include "element.hpp"
 
 #include <SDL_events.h>
 #include <components/sdlutil/sdlmappings.hpp>
+#include <ranges>
+
+namespace
+{
+    // Arbitrary large number caps to prevent performance issues
+    constexpr int sExtCalcSizeWidthCap = 10000000;
+    constexpr int sExtCalcSizeHeightCap = 10000000;
+    constexpr int sExtCalcPositionLeftCap = 10000000;
+    constexpr int sExtCalcPositionTopCap = 10000000;
+}
 
 namespace LuaUi
 {
@@ -20,6 +33,7 @@ namespace LuaUi
         , mParent(nullptr)
         , mTemplateChild(false)
         , mElementRoot(false)
+        , mContentWidget(nullptr)
     {
     }
 
@@ -36,6 +50,11 @@ namespace LuaUi
     {
         // \todo might be more efficient to only register these if there are Lua callbacks
         registerEvents(mWidget);
+
+        mContentWidget = mWidget->createWidget<MyGUI::Widget>("", MyGUI::IntCoord(), MyGUI::Align::Default);
+        mContentWidget->setNeedMouseFocus(false);
+        mContentWidget->setNeedKeyFocus(false);
+        mContentWidget->setInheritsPick(true);
     }
 
     void WidgetExtension::deinitialize()
@@ -112,7 +131,7 @@ namespace LuaUi
         }
         ext->mParent = this;
         ext->mTemplateChild = false;
-        ext->widget()->attachToWidget(mSlot->widget());
+        ext->widget()->attachToWidget(mSlot->contentWidget());
     }
 
     void WidgetExtension::attachTemplate(WidgetExtension* ext)
@@ -214,6 +233,12 @@ namespace LuaUi
             attachTemplate(mTemplateChildren[i]);
         }
         updateTemplate();
+
+        // Template children attach directly to this widget, while normal content is
+        // kept in mContentWidget to apply padding and clipping. Reattach the wrapper
+        // after templates so normal content remains the top-most sibling.
+        mContentWidget->detachFromWidget();
+        mContentWidget->attachToWidget(widget());
     }
 
     void WidgetExtension::updateTemplate()
@@ -274,6 +299,10 @@ namespace LuaUi
 
         if (oldCoord != newCoord)
             mWidget->setCoord(newCoord);
+
+        if (mContentWidget)
+            mContentWidget->setCoord(MyGUI::IntCoord(getContentOffset(), getContentSize()));
+
         updateChildrenCoord();
     }
 
@@ -293,9 +322,19 @@ namespace LuaUi
         mAnchor = propertyValue("anchor", MyGUI::FloatSize());
         mVisible = propertyValue("visible", true);
         mWidget->setVisible(mVisible);
+        mWidget->setNeedMouseFocus(!propertyValue("ignorePointerEvents", false));
         mWidget->setPointer(propertyValue("pointer", std::string("arrow")));
         mWidget->setAlpha(propertyValue("alpha", 1.f));
         mWidget->setInheritsAlpha(propertyValue("inheritAlpha", true));
+        parsePadding();
+    }
+
+    void WidgetExtension::parsePadding()
+    {
+        mPadding = Padding();
+        const LuaUtil::Vec4 value = propertyValue("padding", LuaUtil::Vec4());
+        mPadding = Padding{ static_cast<int>(value.x()), static_cast<int>(value.y()), static_cast<int>(value.z()),
+            static_cast<int>(value.w()) };
     }
 
     void WidgetExtension::updateChildrenCoord()
@@ -316,28 +355,49 @@ namespace LuaUi
             return mParent->childScalingSize();
     }
 
+    MyGUI::IntPoint WidgetExtension::getContentOffset() const
+    {
+        return MyGUI::IntPoint(mPadding.mLeft, mPadding.mTop);
+    }
+
+    MyGUI::IntSize WidgetExtension::getContentSize() const
+    {
+        MyGUI::IntSize fullSize = calculateSize();
+        return MyGUI::IntSize(std::max(0, fullSize.width - (mPadding.mLeft + mPadding.mRight)),
+            std::max(0, fullSize.height - (mPadding.mTop + mPadding.mBottom)));
+    }
+
     MyGUI::IntSize WidgetExtension::calculateSize() const
     {
-        if (mForceSize)
-            return mForcedCoord.size();
-
-        MyGUI::IntSize pSize = parentSize();
         MyGUI::IntSize newSize;
-        newSize = mAbsoluteCoord.size();
-        newSize.width += static_cast<int>(mRelativeCoord.width * pSize.width);
-        newSize.height += static_cast<int>(mRelativeCoord.height * pSize.height);
+        if (mForceSize)
+            newSize = mForcedCoord.size();
+        else
+        {
+            MyGUI::IntSize pSize = parentSize();
+            newSize = mAbsoluteCoord.size();
+            newSize.width += static_cast<int>(mRelativeCoord.width * pSize.width);
+            newSize.height += static_cast<int>(mRelativeCoord.height * pSize.height);
+        }
+        newSize.width = std::clamp(newSize.width, -sExtCalcSizeWidthCap, sExtCalcSizeWidthCap);
+        newSize.height = std::clamp(newSize.height, -sExtCalcSizeHeightCap, sExtCalcSizeHeightCap);
         return newSize;
     }
 
     MyGUI::IntPoint WidgetExtension::calculatePosition(const MyGUI::IntSize& size) const
     {
-        if (mForcePosition)
-            return mForcedCoord.point();
-        MyGUI::IntSize pSize = parentSize();
         MyGUI::IntPoint newPosition;
-        newPosition = mAbsoluteCoord.point();
-        newPosition.left += static_cast<int>(mRelativeCoord.left * pSize.width - mAnchor.width * size.width);
-        newPosition.top += static_cast<int>(mRelativeCoord.top * pSize.height - mAnchor.height * size.height);
+        if (mForcePosition)
+            newPosition = mForcedCoord.point();
+        else
+        {
+            MyGUI::IntSize pSize = parentSize();
+            newPosition = mAbsoluteCoord.point();
+            newPosition.left += static_cast<int>(mRelativeCoord.left * pSize.width - mAnchor.width * size.width);
+            newPosition.top += static_cast<int>(mRelativeCoord.top * pSize.height - mAnchor.height * size.height);
+        }
+        newPosition.left = std::clamp(newPosition.left, -sExtCalcPositionLeftCap, sExtCalcPositionLeftCap);
+        newPosition.top = std::clamp(newPosition.top, -sExtCalcPositionTopCap, sExtCalcPositionTopCap);
         return newPosition;
     }
 
@@ -349,9 +409,14 @@ namespace LuaUi
         return newCoord;
     }
 
+    MyGUI::Widget* WidgetExtension::contentWidget() const
+    {
+        return mContentWidget;
+    }
+
     MyGUI::IntSize WidgetExtension::childScalingSize() const
     {
-        return mSlot->widget()->getSize();
+        return mSlot->getContentSize();
     }
 
     MyGUI::IntSize WidgetExtension::templateScalingSize() const
@@ -364,6 +429,81 @@ namespace LuaUi
         auto it = mCallbacks.find(name);
         if (it != mCallbacks.end())
             it->second.call(argument, mLayout);
+    }
+
+    bool WidgetExtension::collectWarnings(Warnings& warnings, int depth, bool generateWarningStrings) const
+    {
+        auto beginningSize = warnings.size();
+        if (collectUnusedWarnings(warnings, generateWarningStrings) && !generateWarningStrings)
+            return true;
+
+        if (depth > 0)
+        {
+            std::ranges::transform(warnings, warnings.begin(),
+                [&](const std::string& warning) { return std::string((depth + 1) * 2, ' ') + warning; });
+        }
+
+        for (size_t i = 0; i < mChildren.size(); i++)
+        {
+            Warnings childWarnings;
+            if (mChildren[i]->isRoot())
+                continue;
+            if (!mChildren[i]->collectWarnings(childWarnings, depth + 1, generateWarningStrings))
+                continue;
+            if (!generateWarningStrings)
+                return true;
+            warnings.emplace_back(std::string((depth + 1) * 2, ' ') + "in content[" + std::to_string(i) + "]:");
+            std::ranges::move(childWarnings, std::back_inserter(warnings));
+        }
+        if (!warnings.empty())
+        {
+            warnings.insert(warnings.begin(), "Warnings generated for " + diagnosticName() + ":");
+            if (depth > 0)
+                warnings.front() = std::string(depth * 2, ' ') + warnings.front();
+        }
+
+        return warnings.size() != beginningSize;
+    }
+
+    bool WidgetExtension::collectUnusedWarnings(std::vector<std::string>& warnings, bool generateWarningStrings) const
+    {
+        const auto& usedPropsKeys = allUsedProperties();
+        const auto& usedLayoutKeys = LuaUi::Element::allLayoutProperties();
+        bool layoutWarn = warnUnused(warnings, mLayout, "layout", usedLayoutKeys, generateWarningStrings);
+        if (layoutWarn && !generateWarningStrings)
+            // We can skip checking props
+            return true;
+        bool propsWarn = warnUnused(warnings, mProperties, "props", usedPropsKeys, generateWarningStrings);
+
+        return layoutWarn || propsWarn;
+    }
+
+    std::string WidgetExtension::diagnosticName() const
+    {
+        const std::string& name = mWidget->getName();
+        const std::string typeName(mWidget->getTypeName());
+        if (name.empty())
+            return "unnamed " + typeName;
+        return typeName + " named '" + name + "'";
+    }
+
+    const std::vector<std::string_view>& WidgetExtension::allUsedProperties() const
+    {
+        static std::vector<std::string_view> usedProps = {
+            "propagateEvents",
+            "position",
+            "size",
+            "relativePosition",
+            "relativeSize",
+            "anchor",
+            "visible",
+            "ignorePointerEvents",
+            "pointer",
+            "alpha",
+            "inheritAlpha",
+            "padding",
+        };
+        return usedProps;
     }
 
     void WidgetExtension::keyPress(MyGUI::Widget*, MyGUI::KeyCode code, MyGUI::Char ch)
@@ -424,6 +564,18 @@ namespace LuaUi
     {
         protectedCall([=, this](LuaUtil::LuaView& view) {
             propagateEvent("mouseRelease", [&](auto w) { return w->mouseEvent(view, left, top, button); });
+        });
+    }
+
+    void WidgetExtension::mouseWheel(MyGUI::Widget*, float left, float top, float x, float y)
+    {
+        protectedCall([=, this](LuaUtil::LuaView& view) {
+            propagateEvent("mouseWheel", [&](auto w) {
+                sol::table event = view.newTable();
+                event["position"] = osg::Vec2f(left, top);
+                event["delta"] = osg::Vec2f(x, y);
+                return event;
+            });
         });
     }
 

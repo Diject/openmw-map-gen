@@ -817,7 +817,7 @@ namespace CSMWorld
         switch (subColIndex)
         {
             case 0:
-                return race.mData.mBonus[subRowIndex].mSkill; // can be -1
+                return ESM::Skill::refIdToIndex(race.mData.mBonus[subRowIndex].mSkill); // can be -1
             case 1:
                 return race.mData.mBonus[subRowIndex].mBonus;
             default:
@@ -836,7 +836,7 @@ namespace CSMWorld
         switch (subColIndex)
         {
             case 0:
-                race.mData.mBonus[subRowIndex].mSkill = value.toInt();
+                race.mData.mBonus[subRowIndex].mSkill = ESM::Skill::indexToRefId(value.toInt());
                 break; // can be -1
             case 1:
                 race.mData.mBonus[subRowIndex].mBonus = value.toInt();
@@ -1059,14 +1059,20 @@ namespace CSMWorld
 
         const ESM::Region& region = record.get();
 
-        if (subColIndex == 0 && subRowIndex >= 0 && subRowIndex < 10)
+        if (subColIndex == 0 && subRowIndex >= 0 && subRowIndex < ESM::Weather::Length)
         {
             return weatherNames[subRowIndex];
         }
         else if (subColIndex == 1)
         {
-            if (subRowIndex >= 0 && static_cast<size_t>(subRowIndex) < region.mData.mProbabilities.size())
-                return region.mData.mProbabilities[subRowIndex];
+            const ESM::RefId id = ESM::Weather::indexToRefId(subRowIndex);
+            if (!id.empty())
+            {
+                const auto it = region.mData.mProbabilities.find(id);
+                if (it != region.mData.mProbabilities.end())
+                    return it->second;
+                return 0;
+            }
         }
 
         throw std::runtime_error("index out of range");
@@ -1080,7 +1086,9 @@ namespace CSMWorld
 
         if (subColIndex == 1)
         {
-            region.mData.mProbabilities.at(subRowIndex) = chance;
+            const ESM::RefId id = ESM::Weather::indexToRefId(subRowIndex);
+            if (!id.empty())
+                region.mData.mProbabilities[id] = chance;
 
             record.setModified(region);
         }

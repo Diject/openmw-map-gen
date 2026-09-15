@@ -8,6 +8,8 @@
 #include <osg/Matrixf>
 
 #include <components/debug/debuglog.hpp>
+#include <components/esm3/loaddial.hpp>
+#include <components/esm3/loadinfo.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/rng.hpp>
 #include <components/settings/values.hpp>
@@ -27,11 +29,13 @@
 
 #include "constants.hpp"
 #include "ffmpegdecoder.hpp"
+#include "headcache.hpp"
 #include "openaloutput.hpp"
 #include "sound.hpp"
 #include "soundbuffer.hpp"
 #include "sounddecoder.hpp"
 #include "soundoutput.hpp"
+#include "warmqueue.hpp"
 
 namespace MWSound
 {
@@ -101,6 +105,14 @@ namespace MWSound
 
             return volume;
         }
+
+        std::unique_ptr<HeadCache> makeHeadCache(const VFS::Manager& vfs)
+        {
+            const std::size_t sizeMb = Settings::sound().mHeadCacheSize;
+            if (sizeMb == 0)
+                return nullptr;
+            return std::make_unique<HeadCache>(vfs, sizeMb * 1024 * 1024);
+        }
     }
 
     // For combining PlayMode and Type flags
@@ -111,6 +123,7 @@ namespace MWSound
 
     SoundManager::SoundManager(const VFS::Manager* vfs, bool useSound)
         : mVFS(vfs)
+        , mHeadCache(makeHeadCache(*vfs))
         , mOutput(std::make_unique<OpenALOutput>(*this))
         , mWaterSoundUpdater(makeWaterSoundUpdaterSettings())
         , mSoundBuffers(*mOutput)
@@ -158,6 +171,15 @@ namespace MWSound
 
             Log(Debug::Info) << stream.str();
         }
+
+        if (mHeadCache != nullptr && Settings::sound().mWarmSounds)
+        {
+            mWarmQueue = std::make_unique<WarmQueue>(*vfs, *mHeadCache);
+            // Music is independent of cell changes.
+            constexpr VFS::Path::NormalizedView musicDir("music/");
+            for (const VFS::Path::Normalized& name : vfs->getRecursiveDirectoryIterator(musicDir))
+                mWarmQueue->enqueue(name);
+        }
     }
 
     SoundManager::~SoundManager()
@@ -170,14 +192,21 @@ namespace MWSound
     // Return a new decoder instance, used as needed by the output implementations
     DecoderPtr SoundManager::getDecoder()
     {
-        return std::make_shared<FFmpegDecoder>(mVFS);
+        return std::make_shared<FFmpegDecoder>(mVFS, nullptr);
+    }
+
+    // Only streamed sounds take the head cache: a buffered sound is decoded whole at play time and
+    // stays decoded in SoundBufferPool, so a cached head would only be read after the pool unloads it.
+    DecoderPtr SoundManager::getStreamDecoder()
+    {
+        return std::make_shared<FFmpegDecoder>(mVFS, mHeadCache.get());
     }
 
     DecoderPtr SoundManager::loadVoice(VFS::Path::NormalizedView voicefile)
     {
         try
         {
-            DecoderPtr decoder = getDecoder();
+            DecoderPtr decoder = getStreamDecoder();
             decoder->open(Misc::ResourceHelpers::correctSoundPath(voicefile, *decoder->mResourceMgr));
             return decoder;
         }
@@ -264,7 +293,7 @@ namespace MWSound
 
         Log(Debug::Info) << "Playing \"" << filename << "\"";
 
-        DecoderPtr decoder = getDecoder();
+        DecoderPtr decoder = getStreamDecoder();
         try
         {
             decoder->open(filename);
@@ -817,6 +846,25 @@ namespace MWSound
         mOutput->resumeActiveDevice();
     }
 
+    void SoundManager::warmSounds()
+    {
+        if (mWarmQueue == nullptr || mWarmedSounds)
+            return;
+        mWarmedSounds = true;
+
+        const MWWorld::ESMStore& store = *MWBase::Environment::get().getESMStore();
+        // Voice topics can play during gameplay.
+        for (const ESM::Dialogue& topic : store.get<ESM::Dialogue>())
+        {
+            if (topic.mType != ESM::Dialogue::Voice)
+                continue;
+            for (const ESM::DialInfo& info : topic.mInfo)
+                if (!info.mSound.empty())
+                    mWarmQueue->enqueue(Misc::ResourceHelpers::correctSoundPath(
+                        Misc::ResourceHelpers::correctSoundPath(VFS::Path::toNormalized(info.mSound)), *mVFS));
+        }
+    }
+
     void SoundManager::updateRegionSound(float duration)
     {
         MWBase::World* world = MWBase::Environment::get().getWorld();
@@ -1102,6 +1150,7 @@ namespace MWSound
         updateSounds(duration);
         if (state != MWBase::StateManager::State_NoGame)
         {
+            warmSounds();
             updateRegionSound(duration);
             updateWaterSound();
         }

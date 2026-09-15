@@ -1,8 +1,6 @@
 #include "controller.hpp"
 
-#include <osg/Material>
 #include <osg/MatrixTransform>
-#include <osg/TexMat>
 #include <osg/Texture2D>
 
 #include <osgAnimation/Bone>
@@ -10,7 +8,10 @@
 #include <osgParticle/Emitter>
 
 #include <components/nif/data.hpp>
+#include <components/sceneutil/clone.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
+#include <components/sceneutil/texmat.hpp>
 
 #include "matrixtransform.hpp"
 
@@ -308,9 +309,8 @@ namespace NifOsg
 
     void UVController::setDefaults(osg::StateSet* stateset)
     {
-        osg::ref_ptr<osg::TexMat> texMat(new osg::TexMat);
         for (unsigned int unit : mTextureUnits)
-            stateset->setTextureAttributeAndModes(unit, texMat, osg::StateAttribute::ON);
+            SceneUtil::setupTexMatForStateSet(*stateset, unit, osg::Matrixf{});
     }
 
     void UVController::apply(osg::StateSet* stateset, osg::NodeVisitor* nv)
@@ -320,11 +320,10 @@ namespace NifOsg
             float value = getInputValue(nv);
 
             // First scale the UV relative to its center, then apply the offset.
-            // U offset is flipped regardless of the graphics library,
-            // while V offset is flipped to account for OpenGL Y axis convention.
+            // U offset is flipped regardless of the graphics library
             osg::Vec3f uvOrigin(0.5f, 0.5f, 0.f);
             osg::Vec3f uvScale(mUScale.interpKey(value), mVScale.interpKey(value), 1.f);
-            osg::Vec3f uvTrans(-mUTrans.interpKey(value), -mVTrans.interpKey(value), 0.f);
+            osg::Vec3f uvTrans(-mUTrans.interpKey(value), mVTrans.interpKey(value), 0.f);
 
             osg::Matrixf mat = osg::Matrixf::translate(uvOrigin);
             mat.preMultScale(uvScale);
@@ -333,11 +332,7 @@ namespace NifOsg
 
             // setting once is enough because all other texture units share the same TexMat (see setDefaults).
             if (!mTextureUnits.empty())
-            {
-                osg::TexMat* texMat = static_cast<osg::TexMat*>(
-                    stateset->getTextureAttribute(*mTextureUnits.begin(), osg::StateAttribute::TEXMAT));
-                texMat->setMatrix(mat);
-            }
+                SceneUtil::setupTexMatForStateSet(*stateset, *mTextureUnits.begin(), mat);
         }
     }
 
@@ -436,8 +431,7 @@ namespace NifOsg
 
     AlphaController::AlphaController() {}
 
-    AlphaController::AlphaController(const Nif::NiAlphaController* ctrl, const osg::Material* baseMaterial)
-        : mBaseMaterial(baseMaterial)
+    AlphaController::AlphaController(const Nif::NiAlphaController* ctrl)
     {
         if (!ctrl->mInterpolator.empty())
         {
@@ -452,14 +446,12 @@ namespace NifOsg
         : StateSetUpdater(copy, copyop)
         , Controller(copy)
         , mData(copy.mData)
-        , mBaseMaterial(copy.mBaseMaterial)
     {
     }
 
     void AlphaController::setDefaults(osg::StateSet* stateset)
     {
-        stateset->setAttribute(
-            static_cast<osg::Material*>(mBaseMaterial->clone(osg::CopyOp::DEEP_COPY_ALL)), osg::StateAttribute::ON);
+        stateset->addUniform(new osg::Uniform("alpha", 1.f));
     }
 
     void AlphaController::apply(osg::StateSet* stateset, osg::NodeVisitor* nv)
@@ -467,17 +459,14 @@ namespace NifOsg
         if (hasInput())
         {
             float value = mData.interpKey(getInputValue(nv));
-            osg::Material* mat = static_cast<osg::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
-            osg::Vec4f diffuse = mat->getDiffuse(osg::Material::FRONT_AND_BACK);
-            diffuse.a() = value;
-            mat->setDiffuse(osg::Material::FRONT_AND_BACK, diffuse);
+            stateset->getUniform("alpha")->set(value);
         }
     }
 
     MaterialColorController::MaterialColorController() = default;
 
     MaterialColorController::MaterialColorController(
-        const Nif::NiMaterialColorController* ctrl, const osg::Material* baseMaterial)
+        const Nif::NiMaterialColorController* ctrl, const SceneUtil::Material* baseMaterial)
         : mTargetColor(ctrl->mTargetColor)
         , mBaseMaterial(baseMaterial)
     {
@@ -501,8 +490,8 @@ namespace NifOsg
 
     void MaterialColorController::setDefaults(osg::StateSet* stateset)
     {
-        stateset->setAttribute(
-            static_cast<osg::Material*>(mBaseMaterial->clone(osg::CopyOp::DEEP_COPY_ALL)), osg::StateAttribute::ON);
+        stateset->setAttribute(static_cast<SceneUtil::Material*>(mBaseMaterial->clone(osg::CopyOp::DEEP_COPY_ALL)),
+            osg::StateAttribute::ON);
     }
 
     void MaterialColorController::apply(osg::StateSet* stateset, osg::NodeVisitor* nv)
@@ -510,39 +499,41 @@ namespace NifOsg
         if (hasInput())
         {
             osg::Vec3f value = mData.interpKey(getInputValue(nv));
-            osg::Material* mat = static_cast<osg::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
+            SceneUtil::Material* mat
+                = static_cast<SceneUtil::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
             using TargetColor = Nif::NiMaterialColorController::TargetColor;
             switch (mTargetColor)
             {
                 case TargetColor::Diffuse:
                 {
-                    osg::Vec4f diffuse = mat->getDiffuse(osg::Material::FRONT_AND_BACK);
+                    osg::Vec4f diffuse = mat->getDiffuse();
                     diffuse.set(value.x(), value.y(), value.z(), diffuse.a());
-                    mat->setDiffuse(osg::Material::FRONT_AND_BACK, diffuse);
+                    mat->setDiffuse(diffuse);
                     break;
                 }
                 case TargetColor::Specular:
                 {
-                    osg::Vec4f specular = mat->getSpecular(osg::Material::FRONT_AND_BACK);
+                    osg::Vec4f specular = mat->getSpecular();
                     specular.set(value.x(), value.y(), value.z(), specular.a());
-                    mat->setSpecular(osg::Material::FRONT_AND_BACK, specular);
+                    mat->setSpecular(specular);
                     break;
                 }
                 case TargetColor::Emissive:
                 {
-                    osg::Vec4f emissive = mat->getEmission(osg::Material::FRONT_AND_BACK);
+                    osg::Vec4f emissive = mat->getEmission();
                     emissive.set(value.x(), value.y(), value.z(), emissive.a());
-                    mat->setEmission(osg::Material::FRONT_AND_BACK, emissive);
+                    mat->setEmission(emissive);
                     break;
                 }
                 case TargetColor::Ambient:
                 default:
                 {
-                    osg::Vec4f ambient = mat->getAmbient(osg::Material::FRONT_AND_BACK);
+                    osg::Vec4f ambient = mat->getAmbient();
                     ambient.set(value.x(), value.y(), value.z(), ambient.a());
-                    mat->setAmbient(osg::Material::FRONT_AND_BACK, ambient);
+                    mat->setAmbient(ambient);
                 }
             }
+            mat->updateStateSet(stateset);
         }
     }
 
@@ -652,6 +643,125 @@ namespace NifOsg
         node->setTranslation(mPath.interpKey(percent));
 
         traverse(node, nv);
+    }
+
+    LookAtController::LookAtController(const Nif::NiLookAtController& ctrl)
+        : mFlags(ctrl.mLookAtFlags)
+    {
+    }
+
+    LookAtController::LookAtController(const LookAtController& copy, const osg::CopyOp& copyop)
+        : SceneUtil::NodeCallback<LookAtController, NifOsg::MatrixTransform*>(copy, copyop)
+        , SceneUtil::Controller(copy)
+        , mFlags(copy.mFlags)
+        , mTarget(copy.mTarget)
+    {
+    }
+
+    void LookAtController::setTarget(osg::Group* target)
+    {
+        mTarget = target;
+    }
+
+    void LookAtController::operator()(NifOsg::MatrixTransform* node, osg::NodeVisitor* nv)
+    {
+        osg::ref_ptr<osg::Group> target;
+        if (!mTarget.lock(target))
+        {
+            traverse(node, nv);
+            return;
+        }
+
+        osg::MatrixList targetMats = target->getWorldMatrices();
+        if (targetMats.empty())
+        {
+            traverse(node, nv);
+            return;
+        }
+
+        const osg::NodePath& nodePath = nv->getNodePath();
+        const osg::Matrixf nodeWorldMat = osg::computeLocalToWorld(nodePath);
+        osg::Vec3f worldDir = targetMats.front().getTrans() - nodeWorldMat.getTrans();
+        float len = worldDir.length();
+        if (len < 1e-6f)
+        {
+            traverse(node, nv);
+            return;
+        }
+
+        worldDir /= len;
+
+        osg::Matrixf parentWorldInv;
+        if (nodePath.size() > 1)
+        {
+            osg::NodePath parentPath(nodePath.begin(), nodePath.end() - 1);
+            osg::Matrixf parentWorld = osg::computeLocalToWorld(parentPath);
+            if (!parentWorldInv.invert(parentWorld))
+            {
+                traverse(node, nv);
+                return;
+            }
+        }
+
+        // Build a constrained look-at rotation matrix.
+        // Which axis is "forward" depends on the flag; preferred up is world Z.
+        // Per MWSE: negate forward when flip is NOT set. No idea why.
+        osg::Vec3f forward = osg::Matrixf::transform3x3(worldDir, parentWorldInv);
+        forward.normalize();
+        if (!(mFlags & Nif::NiLookAtController::Flag_Flip))
+            forward = -forward;
+
+        osg::Vec3f up = osg::Matrixf::transform3x3(osg::Vec3f(0.f, 0.f, 1.f), parentWorldInv);
+        up.normalize();
+
+        osg::Vec3f left = up ^ forward;
+        float leftLen = left.length();
+        if (leftLen < 1e-6f)
+        {
+            traverse(node, nv);
+            return;
+        }
+
+        left /= leftLen;
+        up = forward ^ left;
+
+        osg::Vec3f rowX, rowY, rowZ;
+        if (mFlags & Nif::NiLookAtController::Flag_LookZAxis)
+        {
+            rowX = left;
+            rowY = up;
+            rowZ = forward;
+        }
+        else if (mFlags & Nif::NiLookAtController::Flag_LookYAxis)
+        {
+            rowX = forward ^ up;
+            rowY = forward;
+            rowZ = up;
+        }
+        else
+        {
+            rowX = forward;
+            rowY = left;
+            rowZ = up;
+        }
+
+        osg::Matrixf rotMat(rowX.x(), rowX.y(), rowX.z(), 0.0, rowY.x(), rowY.y(), rowY.z(), 0.0, rowZ.x(), rowZ.y(),
+            rowZ.z(), 0.0, 0.0, 0.0, 0.0, 1.0);
+
+        osg::Quat rotation;
+        rotation.set(rotMat);
+        node->setRotation(rotation);
+
+        traverse(node, nv);
+    }
+
+    void LookAtController::remapTargets(const SceneUtil::CopyOp& copyop)
+    {
+        if (!mTarget)
+            return;
+
+        if (osg::Node* clonedTarget = copyop.getClonedNode(mTarget.get()))
+            mTarget = clonedTarget->asGroup();
     }
 
 }

@@ -1,9 +1,5 @@
 #version 120
 
-#if @useUBO
-    #extension GL_ARB_uniform_buffer_object : require
-#endif
-
 #if @useGPUShader4
     #extension GL_EXT_gpu_shader4: require
 #endif
@@ -14,14 +10,17 @@
 
 #if @diffuseMap
 varying vec2 diffuseMapUV;
+uniform mat4 texMat@diffuseMapUV;
 #endif
 
 #if @emissiveMap
 varying vec2 emissiveMapUV;
+uniform mat4 texMat@emissiveMapUV;
 #endif
 
 #if @normalMap
 varying vec2 normalMapUV;
+uniform mat4 texMat@normalMapUV;
 varying vec4 passTangent;
 #endif
 
@@ -31,12 +30,13 @@ varying float linearDepth;
 varying vec3 passViewPos;
 varying vec3 passNormal;
 
-#include "lib/light/lighting.glsl"
 #include "lib/view/depth.glsl"
+#include "lib/material/vertexcolors.glsl"
 
-#include "compatibility/vertexcolors.glsl"
 #include "compatibility/shadows_vertex.glsl"
 #include "compatibility/normals.glsl"
+
+centroid varying vec4 passColor;
 
 void main(void)
 {
@@ -56,15 +56,15 @@ void main(void)
 #endif
 
 #if @diffuseMap
-    diffuseMapUV = (gl_TextureMatrix[@diffuseMapUV] * gl_MultiTexCoord@diffuseMapUV).xy;
+    diffuseMapUV = (texMat@diffuseMapUV * gl_MultiTexCoord@diffuseMapUV).xy;
 #endif
 
 #if @emissiveMap
-    emissiveMapUV = (gl_TextureMatrix[@emissiveMapUV] * gl_MultiTexCoord@emissiveMapUV).xy;
+    emissiveMapUV = (texMat@emissiveMapUV * gl_MultiTexCoord@emissiveMapUV).xy;
 #endif
 
 #if @normalMap
-    normalMapUV = (gl_TextureMatrix[@normalMapUV] * gl_MultiTexCoord@normalMapUV).xy;
+    normalMapUV = (texMat@normalMapUV * gl_MultiTexCoord@normalMapUV).xy;
 #endif
 
 

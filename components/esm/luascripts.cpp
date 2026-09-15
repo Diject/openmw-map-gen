@@ -3,6 +3,7 @@
 #include <components/esm3/esmreader.hpp>
 #include <components/esm3/esmwriter.hpp>
 
+#include <components/lua/configuration.hpp>
 #include <components/lua/luastateptr.hpp>
 #include <components/lua/serialization.hpp>
 
@@ -180,7 +181,7 @@ void ESM::LuaScripts::save(ESMWriter& esm) const
 {
     for (const LuaScript& script : mScripts)
     {
-        esm.writeHNString("LUAS", script.mScriptPath);
+        esm.writeHNT("LUAS", script.mScriptId);
         saveLuaBinaryData(esm, script.mData);
         for (const LuaTimer& timer : script.mTimers)
         {

@@ -32,6 +32,7 @@
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
 
+#include "../mwrender/camera.hpp"
 #include "../mwrender/landmanager.hpp"
 #include "../mwrender/postprocessor.hpp"
 #include "../mwrender/renderingmanager.hpp"
@@ -457,7 +458,7 @@ namespace MWWorld
                 mPhysics->addHeightField(defaultHeight.data(), cellX, cellY, worldsize, verts,
                     ESM::Land::DEFAULT_HEIGHT, ESM::Land::DEFAULT_HEIGHT, land.get());
             }
-            if (const auto heightField = mPhysics->getHeightField(cellX, cellY))
+            if (mPhysics->getHeightField(cellX, cellY))
             {
                 const osg::Vec2i cellPosition(cellX, cellY);
                 const HeightfieldShape shape = [&]() -> HeightfieldShape {
@@ -510,7 +511,7 @@ namespace MWWorld
 
             if (cellVariant.isExterior())
             {
-                if (mPhysics->getHeightField(cellX, cellY) != nullptr)
+                if (mPhysics->getHeightField(cellX, cellY))
                     mNavigator.addWater(
                         osg::Vec2i(cellX, cellY), ESM::Land::REAL_SIZE, waterLevel, navigatorUpdateGuard);
             }
@@ -1083,17 +1084,6 @@ namespace MWWorld
         return mActiveCells.contains(&cell);
     }
 
-    Ptr Scene::searchPtrViaActorId(int actorId)
-    {
-        for (CellStoreCollection::const_iterator iter(mActiveCells.begin()); iter != mActiveCells.end(); ++iter)
-        {
-            Ptr ptr = (*iter)->searchViaActorId(actorId);
-            if (!ptr.isEmpty())
-                return ptr;
-        }
-        return Ptr();
-    }
-
     class PreloadMeshItem : public SceneUtil::WorkItem
     {
     public:
@@ -1156,8 +1146,12 @@ namespace MWWorld
         osg::Vec3f predictedPos = playerPos + moved / dt * mPredictionTime;
 
         if (mCurrentCell->isExterior())
-            exteriorPositions.push_back(PositionCellGrid{
-                predictedPos, gridCenterToBounds(getNewGridCenter(predictedPos, &mCurrentGridCenter)) });
+        {
+            const MWRender::Camera& camera = *mRendering.getCamera();
+            exteriorPositions = terrainPreloadPositions(predictedPos, playerPos, camera.getPosition(),
+                camera.getMode() == MWRender::Camera::Mode::Static,
+                gridCenterToBounds(getNewGridCenter(predictedPos, nullptr)), mCurrentCell->getCell()->getWorldSpace());
+        }
 
         mLastPlayerPos = playerPos;
 
@@ -1297,9 +1291,11 @@ namespace MWWorld
             throw std::runtime_error("preloadTerrain can only work with the current exterior worldspace");
 
         ESM::ExteriorCellLocation cellPos = ESM::positionToExteriorCellLocation(pos.x(), pos.y(), worldspace);
-        const PositionCellGrid position{ pos, gridCenterToBounds({ cellPos.mX, cellPos.mY }) };
-        mPreloader->abortTerrainPreloadExcept(&position);
-        mPreloader->setTerrainPreloadPositions(std::span(&position, 1));
+        // Teleports preload their destination alone.
+        const std::vector<PositionCellGrid> positions = terrainPreloadPositions(
+            pos, pos, osg::Vec3f(), false, gridCenterToBounds({ cellPos.mX, cellPos.mY }), worldspace);
+        mPreloader->abortTerrainPreloadExcept(&positions.front());
+        mPreloader->setTerrainPreloadPositions(positions);
         if (!sync)
             return;
 

@@ -190,6 +190,9 @@ namespace SceneUtil
             camera->setViewport(0, 0, mTextureWidth, mTextureHeight);
             SceneUtil::setCameraClearDepth(camera);
 
+            camera->getOrCreateStateSet()->addUniform(new osg::Uniform(
+                "screenRes", osg::Vec2f(static_cast<float>(mTextureWidth), static_cast<float>(mTextureHeight))));
+
             setDefaults(camera);
 
             if (camera->getBufferAttachmentMap().count(osg::Camera::COLOR_BUFFER))
@@ -249,7 +252,7 @@ namespace SceneUtil
 
             // OSG appears not to properly initialize this metadata. So when multisampling is enabled, OSG will use
             // incorrect formats for the resolve buffers.
-            if (mSamples > 1)
+            if (mSamples > 1 || mAddMSAAIntermediateTarget)
             {
                 camera->getBufferAttachmentMap()[osg::Camera::COLOR_BUFFER]._internalFormat
                     = mColorBufferInternalFormat;

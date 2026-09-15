@@ -5,17 +5,18 @@
 #include <type_traits>
 
 #include <osg/Texture2D>
+#include <osg/observer_ptr>
 
 #include <components/nif/controller.hpp>
 #include <components/nif/data.hpp>
 #include <components/nif/nifkey.hpp>
 #include <components/sceneutil/keyframe.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 
 namespace osg
 {
-    class Material;
     class MatrixTransform;
 }
 
@@ -26,7 +27,9 @@ namespace osgParticle
 
 namespace SceneUtil
 {
+    class CopyOp;
     class MorphGeometry;
+    class Material;
 }
 
 namespace NifOsg
@@ -326,10 +329,9 @@ namespace NifOsg
     {
     private:
         FloatInterpolator mData;
-        osg::ref_ptr<const osg::Material> mBaseMaterial;
 
     public:
-        AlphaController(const Nif::NiAlphaController* ctrl, const osg::Material* baseMaterial);
+        AlphaController(const Nif::NiAlphaController* ctrl);
         AlphaController();
         AlphaController(const AlphaController& copy, const osg::CopyOp& copyop);
 
@@ -343,7 +345,7 @@ namespace NifOsg
     class MaterialColorController : public SceneUtil::StateSetUpdater, public SceneUtil::Controller
     {
     public:
-        MaterialColorController(const Nif::NiMaterialColorController* ctrl, const osg::Material* baseMaterial);
+        MaterialColorController(const Nif::NiMaterialColorController* ctrl, const SceneUtil::Material* baseMaterial);
         MaterialColorController();
         MaterialColorController(const MaterialColorController& copy, const osg::CopyOp& copyop);
 
@@ -358,7 +360,7 @@ namespace NifOsg
         Nif::NiMaterialColorController::TargetColor mTargetColor{
             Nif::NiMaterialColorController::TargetColor::Ambient
         };
-        osg::ref_ptr<const osg::Material> mBaseMaterial;
+        osg::ref_ptr<const SceneUtil::Material> mBaseMaterial;
     };
 
     class FlipController : public SceneUtil::StateSetUpdater, public SceneUtil::Controller
@@ -418,6 +420,27 @@ namespace NifOsg
         int mFlags{ 0 };
 
         float getPercent(float time) const;
+    };
+
+    class LookAtController : public SceneUtil::NodeCallback<LookAtController, NifOsg::MatrixTransform*>,
+                             public SceneUtil::Controller
+    {
+    public:
+        LookAtController(const Nif::NiLookAtController& ctrl);
+        LookAtController() = default;
+        LookAtController(const LookAtController& copy, const osg::CopyOp& copyop);
+
+        META_Object(NifOsg, LookAtController)
+
+        void operator()(NifOsg::MatrixTransform*, osg::NodeVisitor*);
+
+        void setTarget(osg::Group* target);
+
+        void remapTargets(const SceneUtil::CopyOp& copyop) override;
+
+    private:
+        uint16_t mFlags{ 0 };
+        osg::observer_ptr<osg::Group> mTarget;
     };
 
 }

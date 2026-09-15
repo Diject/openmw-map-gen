@@ -190,8 +190,6 @@ namespace MWMechanics
 
         void clear() override;
 
-        bool isAggressive(const MWWorld::Ptr& ptr, const MWWorld::Ptr& target) override;
-
         void resurrect(const MWWorld::Ptr& ptr) override;
 
         bool isCastingSpell(const MWWorld::Ptr& ptr) const override;
@@ -227,7 +225,7 @@ namespace MWMechanics
         void setWerewolf(const MWWorld::Ptr& actor, bool werewolf) override;
         void applyWerewolfAcrobatics(const MWWorld::Ptr& actor) override;
 
-        void cleanupSummonedCreature(const MWWorld::Ptr& caster, int creatureActorId) override;
+        void cleanupSummonedCreature(ESM::RefNum creature) override;
 
         void confiscateStolenItemToOwner(
             const MWWorld::Ptr& player, const MWWorld::Ptr& item, const MWWorld::Ptr& victim, int count) override;
@@ -241,7 +239,6 @@ namespace MWMechanics
         int getGreetingTimer(const MWWorld::Ptr& ptr) const override;
         float getAngleToPlayer(const MWWorld::Ptr& ptr) const override;
         GreetingState getGreetingState(const MWWorld::Ptr& ptr) const override;
-        bool isTurningToPlayer(const MWWorld::Ptr& ptr) const override;
         void fastForwardAi() const override;
 
     private:

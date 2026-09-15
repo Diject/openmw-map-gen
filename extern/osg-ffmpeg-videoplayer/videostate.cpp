@@ -81,6 +81,10 @@ struct PacketListFree
 
 VideoState::VideoState()
     : mAudioFactory(nullptr)
+    , mTexture(nullptr)
+    , mStagingImage(nullptr)
+    , mImageIsStaged(false)
+    , mStagingMutex()
     , format_ctx(nullptr)
     , video_ctx(nullptr)
     , audio_ctx(nullptr)
@@ -97,11 +101,6 @@ VideoState::VideoState()
     , mQuit(false)
 {
     mFlushPktData = flush_pkt.data;
-
-// This is not needed any more above FFMpeg version 4.0
-#if LIBAVCODEC_VERSION_INT < 3805796
-    av_register_all();
-#endif
 }
 
 VideoState::~VideoState()
@@ -292,6 +291,26 @@ void VideoState::video_display(VideoPicture *vp)
 {
     if(this->video_ctx->width != 0 && this->video_ctx->height != 0)
     {
+        std::lock_guard lock(mStagingMutex);
+
+        if (!mStagingImage)
+            mStagingImage = new osg::Image;
+        if (mStagingImage->data() == nullptr || mStagingImage->s() != vp->rgbaFrame->width
+            || mStagingImage->t() != vp->rgbaFrame->height || mStagingImage->r() != 1)
+        {
+            auto size = av_image_get_buffer_size(
+                AV_PIX_FMT_RGBA, vp->rgbaFrame->width, vp->rgbaFrame->height, alignof(uint8_t));
+
+            uint8_t* buffer = new uint8_t[size];
+            mStagingImage->setImage(this->video_ctx->width, this->video_ctx->height, 1, GL_RGBA, GL_RGBA,
+                GL_UNSIGNED_BYTE, buffer, osg::Image::USE_NEW_DELETE, alignof(uint8_t));
+        }
+
+        av_image_copy_to_buffer(mStagingImage->data(), mStagingImage->getImageSizeInBytes(), vp->rgbaFrame->data,
+            vp->rgbaFrame->linesize, (AVPixelFormat)vp->rgbaFrame->format, vp->rgbaFrame->width, vp->rgbaFrame->height,
+            alignof(uint8_t));
+        mStagingImage->dirty();
+
         if (!mTexture.get())
         {
             mTexture = new osg::Texture2D;
@@ -299,14 +318,11 @@ void VideoState::video_display(VideoPicture *vp)
             mTexture->setResizeNonPowerOfTwoHint(false);
             mTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
             mTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
+            mTexture->setImage(mStagingImage);
+            mStagingImage = nullptr;
         }
-
-        osg::ref_ptr<osg::Image> image = new osg::Image;
-
-        image->setImage(this->video_ctx->width, this->video_ctx->height,
-                        1, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, vp->rgbaFrame->data[0], osg::Image::NO_DELETE);
-
-        mTexture->setImage(image);
+        else
+            mImageIsStaged = true;
     }
 }
 
@@ -565,12 +581,7 @@ public:
                     // we want to seek to any keyframe *before* the given time, so we can continue decoding as normal from there on
                     if(av_seek_frame(self->format_ctx, streamIndex, timestamp, AVSEEK_FLAG_BACKWARD) < 0)
                     {
-// In the FFMpeg 4.0 a "filename" field was replaced by "url"
-#if LIBAVCODEC_VERSION_INT < 3805796
-                        OSG_FATAL << "Error seeking " << self->format_ctx->filename << std::endl;
-#else
                         OSG_FATAL << "Error seeking " << self->format_ctx->url << std::endl;
-#endif
                     }
                     else
                     {
@@ -653,6 +664,17 @@ bool VideoState::update()
     return !this->mVideoEnded;
 }
 
+void VideoState::commitFrame()
+{
+    std::lock_guard lock(mStagingMutex);
+    if (mImageIsStaged)
+    {
+        osg::ref_ptr<osg::Image> otherImage = mTexture->getImage();
+        mTexture->setImage(mStagingImage);
+        mStagingImage = otherImage;
+        mImageIsStaged = false;
+    }
+}
 
 int VideoState::stream_open(int stream_index, AVFormatContext *pFormatCtx)
 {
@@ -675,11 +697,6 @@ int VideoState::stream_open(int stream_index, AVFormatContext *pFormatCtx)
         // Get a pointer to the codec context for the video stream
         this->audio_ctx = avcodec_alloc_context3(codec);
         avcodec_parameters_to_context(this->audio_ctx, pFormatCtx->streams[stream_index]->codecpar);
-
-// This is not needed any more above FFMpeg version 4.0
-#if LIBAVCODEC_VERSION_INT < 3805796
-        av_codec_set_pkt_timebase(this->audio_ctx, pFormatCtx->streams[stream_index]->time_base);
-#endif
 
         if (avcodec_open2(this->audio_ctx, codec, nullptr) < 0)
         {
@@ -712,11 +729,6 @@ int VideoState::stream_open(int stream_index, AVFormatContext *pFormatCtx)
         // Get a pointer to the codec context for the video stream
         this->video_ctx = avcodec_alloc_context3(codec);
         avcodec_parameters_to_context(this->video_ctx, pFormatCtx->streams[stream_index]->codecpar);
-
-// This is not needed any more above FFMpeg version 4.0
-#if LIBAVCODEC_VERSION_INT < 3805796
-        av_codec_set_pkt_timebase(this->video_ctx, pFormatCtx->streams[stream_index]->time_base);
-#endif
 
         if (avcodec_open2(this->video_ctx, codec, nullptr) < 0)
         {
@@ -768,20 +780,12 @@ void VideoState::init(std::unique_ptr<std::istream>&& inputstream, const std::st
           if (this->format_ctx->pb != nullptr)
           {
               av_freep(&this->format_ctx->pb->buffer);
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 80, 100)
               avio_context_free(&this->format_ctx->pb);
-#else
-              av_freep(&this->format_ctx->pb);
-#endif
           }
         }
         // "Note that a user-supplied AVFormatContext will be freed on failure."
         this->format_ctx = nullptr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 80, 100)
         avio_context_free(&ioCtx);
-#else
-        av_freep(&ioCtx);
-#endif
         throw std::runtime_error("Failed to open video input");
     }
 
@@ -856,11 +860,7 @@ void VideoState::deinit()
         if (this->format_ctx->pb != nullptr)
         {
             av_freep(&this->format_ctx->pb->buffer);
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 80, 100)
             avio_context_free(&this->format_ctx->pb);
-#else
-            av_freep(&this->format_ctx->pb);
-#endif
         }
         avformat_close_input(&this->format_ctx);
     }
@@ -962,4 +962,3 @@ void ExternalClock::set(uint64_t time)
 }
 
 }
-

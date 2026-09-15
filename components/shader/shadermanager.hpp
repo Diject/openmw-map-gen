@@ -40,15 +40,19 @@ namespace Shader
         /// @param defines Define values that can be retrieved by the shader template.
         /// @param shaderType The type of shader (usually vertex or fragment shader).
         /// @note May return nullptr on failure.
-        /// @note Thread safe.
+        /// @note Thread safe, use getShaderInternal within the ShaderManager if you've already locked the mutex.
         osg::ref_ptr<osg::Shader> getShader(std::string templateName, const DefineMap& defines = {},
             std::optional<osg::Shader::Type> type = std::nullopt);
 
+        typedef std::map<std::string, int> SamplerBindingMap;
+
+        /// @param samplers Sampler uniforms to bind once per linked program instead of on every stateset.
         osg::ref_ptr<osg::Program> getProgram(const std::string& templateName, const DefineMap& defines = {},
-            const osg::Program* programTemplate = nullptr);
+            const osg::Program* programTemplate = nullptr, const SamplerBindingMap& samplers = {});
 
         osg::ref_ptr<osg::Program> getProgram(osg::ref_ptr<osg::Shader> vertexShader,
-            osg::ref_ptr<osg::Shader> fragmentShader, const osg::Program* programTemplate = nullptr);
+            osg::ref_ptr<osg::Shader> fragmentShader, const osg::Program* programTemplate = nullptr,
+            const SamplerBindingMap& samplers = {});
 
         const osg::Program* getProgramTemplate() const { return mProgramTemplate; }
         void setProgramTemplate(const osg::Program* program) { mProgramTemplate = program; }
@@ -78,6 +82,7 @@ namespace Shader
         enum class Slot
         {
             OpaqueDepthTexture,
+            OpaqueColorTexture,
             SkyTexture,
             ShadowMaps,
             SLOT_COUNT
@@ -90,6 +95,8 @@ namespace Shader
         void triggerShaderReload();
 
     private:
+        osg::ref_ptr<osg::Shader> getShaderInternal(std::string templateName, const DefineMap& defines = {},
+            std::optional<osg::Shader::Type> type = std::nullopt);
         void getLinkedShaders(osg::ref_ptr<osg::Shader> shader, const std::vector<std::string>& linkedShaderNames,
             const DefineMap& defines);
         void addLinkedShaders(osg::ref_ptr<osg::Shader> shader, osg::ref_ptr<osg::Program> program);
@@ -139,6 +146,8 @@ namespace Shader
     bool parseDirectives(std::string& source, std::vector<std::string>& linkedShaderTemplateNames,
         const ShaderManager::DefineMap& defines, const ShaderManager::DefineMap& globalDefines,
         const std::string& templateName);
+
+    ShaderManager::DefineMap getDefaultDefines();
 }
 
 #endif

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-#include <osgDB/WriteFile>
+#include <osgDB/Registry>
 
 #include <components/esm3/containerstate.hpp>
 #include <components/esm3/creaturestate.hpp>
@@ -17,16 +17,6 @@
 
 namespace
 {
-
-    void convertImage(char* data, size_t size, int width, int height, GLenum pf, const std::string& out)
-    {
-        osg::ref_ptr<osg::Image> image(new osg::Image);
-        image->allocateImage(width, height, 1, pf, GL_UNSIGNED_BYTE);
-        memcpy(image->data(), data, size);
-        image->flipVertical();
-
-        osgDB::writeImageFile(*image, out);
-    }
 
     void convertCellRef(const ESSImport::CellRef& cellref, ESM::ObjectState& objstate)
     {
@@ -64,7 +54,7 @@ namespace
         refId = indexedRefId.substr(0, indexedRefId.size() - 8);
     }
 
-    int convertActorId(const std::string& indexedRefId, ESSImport::Context& context)
+    ESM::RefNum convertActorId(const std::string& indexedRefId, ESSImport::Context& context)
     {
         if (isIndexedRefId(indexedRefId))
         {
@@ -73,16 +63,15 @@ namespace
             splitIndexedRefId(indexedRefId, refIndex, refId);
 
             auto it = context.mActorIdMap.find(std::make_pair(refIndex, ESM::RefId::stringRefId(refId)));
-            if (it == context.mActorIdMap.end())
-                return -1;
-            return it->second;
+            if (it != context.mActorIdMap.end())
+                return it->second;
         }
         else if (indexedRefId == "PlayerSaveGame")
         {
-            return context.mPlayer.mObject.mCreatureStats.mActorId;
+            return context.mPlayer.mObject.mRef.mRefNum;
         }
 
-        return -1;
+        return {};
     }
 }
 
@@ -114,7 +103,7 @@ namespace ESSImport
         mGlobalMapImage->scaleImage(maph.size * 2, maph.size * 2, 1, GL_UNSIGNED_BYTE);
     }
 
-    void ConvertFMAP::write(ESM::ESMWriter& esm)
+    void ConvertFMAP::write(ESM::ESMWriter& esm) const
     {
         int numcells = mGlobalMapImage->s() / 18; // NB truncating, doesn't divide perfectly
                                                   // with the 512x512 map the game has by default
@@ -232,29 +221,9 @@ namespace ESSImport
                 esm.skip(4);
             }
 
+            // Read past it: the fog of war is not carried into the converted save, and
+            // the subrecord still has to be consumed to keep the stream aligned.
             esm.getT(nam8);
-
-            newcell.mFogOfWar.reserve(16 * 16);
-            for (int x = 0; x < 16; ++x)
-            {
-                for (int y = 0; y < 16; ++y)
-                {
-                    size_t pos = x * 16 + y;
-                    size_t bytepos = pos / 8;
-                    assert(bytepos < 32);
-                    int bit = pos % 8;
-                    newcell.mFogOfWar.push_back(((nam8[bytepos] >> bit) & (0x1)) ? 0xffffffff : 0x000000ff);
-                }
-            }
-
-            if (cell.isExterior())
-            {
-                std::ostringstream filename;
-                filename << "fog_" << cell.mData.mX << "_" << cell.mData.mY << ".tga";
-
-                convertImage(
-                    (char*)&newcell.mFogOfWar[0], newcell.mFogOfWar.size() * 4, 16, 16, GL_RGBA, filename.str());
-            }
         }
 
         // moved reference, not handled yet
@@ -314,7 +283,7 @@ namespace ESSImport
             mIntCells[cell.mName] = std::move(newcell);
     }
 
-    void ConvertCell::writeCell(const Cell& cell, ESM::ESMWriter& esm)
+    void ConvertCell::writeCell(const Cell& cell, ESM::ESMWriter& esm) const
     {
         ESM::Cell esmcell = cell.mCell;
         esm.startRecord(ESM::REC_CSTA);
@@ -378,9 +347,8 @@ namespace ESSImport
                     convertNPCC(npccIt->second, objstate);
                     convertCellRef(cellref, objstate);
 
-                    objstate.mCreatureStats.mActorId = mContext->generateActorId();
-                    mContext->mActorIdMap.insert(
-                        std::make_pair(std::make_pair(refIndex, out.mRefID), objstate.mCreatureStats.mActorId));
+                    mContext->generateRefNum(objstate.mRef.mRefNum);
+                    mContext->mActorIdMap.emplace(std::make_pair(refIndex, out.mRefID), objstate.mRef.mRefNum);
 
                     esm.writeHNT("OBJE", ESM::REC_NPC_);
                     objstate.save(esm);
@@ -419,9 +387,8 @@ namespace ESSImport
                     convertCREC(crecIt->second, objstate);
                     convertCellRef(cellref, objstate);
 
-                    objstate.mCreatureStats.mActorId = mContext->generateActorId();
-                    mContext->mActorIdMap.insert(
-                        std::make_pair(std::make_pair(refIndex, out.mRefID), objstate.mCreatureStats.mActorId));
+                    mContext->generateRefNum(objstate.mRef.mRefNum);
+                    mContext->mActorIdMap.emplace(std::make_pair(refIndex, out.mRefID), objstate.mRef.mRefNum);
 
                     esm.writeHNT("OBJE", ESM::REC_CREA);
                     objstate.save(esm);
@@ -437,7 +404,7 @@ namespace ESSImport
         esm.endRecord(ESM::REC_CSTA);
     }
 
-    void ConvertCell::write(ESM::ESMWriter& esm)
+    void ConvertCell::write(ESM::ESMWriter& esm) const
     {
         for (const auto& cell : mIntCells)
             writeCell(cell.second, esm);
@@ -458,7 +425,7 @@ namespace ESSImport
         mProj.load(esm);
     }
 
-    void ConvertPROJ::write(ESM::ESMWriter& esm)
+    void ConvertPROJ::write(ESM::ESMWriter& esm) const
     {
         for (const PROJ::PNAM& pnam : mProj.mProjectiles)
         {
@@ -470,6 +437,7 @@ namespace ESSImport
                 out.mBowId = ESM::RefId::stringRefId(pnam.mBowId.toString());
                 out.mVelocity = pnam.mVelocity;
                 out.mAttackStrength = pnam.mAttackStrength;
+                out.mAttackWindUp = -1;
 
                 esm.startRecord(ESM::REC_PROJ);
                 out.save(esm);
@@ -501,7 +469,7 @@ namespace ESSImport
         }
     }
 
-    void ConvertPROJ::convertBaseState(ESM::BaseProjectileState& base, const PROJ::PNAM& pnam)
+    void ConvertPROJ::convertBaseState(ESM::BaseProjectileState& base, const PROJ::PNAM& pnam) const
     {
         base.mId = ESM::RefId::stringRefId(pnam.mArrowId.toString());
         base.mPosition = pnam.mPosition;
@@ -510,7 +478,7 @@ namespace ESSImport
         orient.makeRotate(osg::Vec3f(0, 1, 0), pnam.mVelocity);
         base.mOrientation = orient;
 
-        base.mActorId = convertActorId(pnam.mActorId.toString(), *mContext);
+        base.mCaster = convertActorId(pnam.mActorId.toString(), *mContext);
     }
 
     void ConvertSPLM::read(ESM::ESMReader& esm)
@@ -519,7 +487,7 @@ namespace ESSImport
         mContext->mActiveSpells = mSPLM.mActiveSpells;
     }
 
-    void ConvertSPLM::write(ESM::ESMWriter& esm)
+    void ConvertSPLM::write(ESM::ESMWriter& esm) const
     {
         std::cerr << "Warning: Skipped active spell conversion (not implemented)" << std::endl;
     }

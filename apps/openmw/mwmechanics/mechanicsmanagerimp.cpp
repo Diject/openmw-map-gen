@@ -44,16 +44,6 @@
 namespace
 {
 
-    float getFightDispositionBias(float disposition)
-    {
-        static const float fFightDispMult = MWBase::Environment::get()
-                                                .getESMStore()
-                                                ->get<ESM::GameSetting>()
-                                                .find("fFightDispMult")
-                                                ->mValue.getFloat();
-        return ((50.f - disposition) * fFightDispMult);
-    }
-
     void getPersuasionRatings(
         const MWMechanics::NpcStats& stats, float& rating1, float& rating2, float& rating3, bool player)
     {
@@ -134,11 +124,11 @@ namespace MWMechanics
         creatureStats.getSpells().clear(true);
         creatureStats.getActiveSpells().clear(ptr);
 
-        for (size_t i = 0; i < player->mNpdt.mSkills.size(); ++i)
-            npcStats.getSkill(ESM::Skill::indexToRefId(static_cast<int>(i))).setBase(player->mNpdt.mSkills[i]);
+        for (const auto& [skill, value] : player->mNpdt.mSkills)
+            npcStats.getSkill(skill).setBase(value);
 
-        for (size_t i = 0; i < player->mNpdt.mAttributes.size(); ++i)
-            npcStats.setAttribute(ESM::Attribute::indexToRefId(static_cast<int>(i)), player->mNpdt.mSkills[i]);
+        for (const auto& [attribute, value] : player->mNpdt.mAttributes)
+            npcStats.setAttribute(attribute, value);
 
         const MWWorld::ESMStore& esmStore = *MWBase::Environment::get().getESMStore();
 
@@ -156,9 +146,8 @@ namespace MWMechanics
             for (const ESM::Skill& skill : esmStore.get<ESM::Skill>())
             {
                 int bonus = 0;
-                int index = ESM::Skill::refIdToIndex(skill.mId);
                 auto bonusIt = std::find_if(race->mData.mBonus.begin(), race->mData.mBonus.end(),
-                    [&](const auto& v) { return v.mSkill == index; });
+                    [&](const auto& v) { return v.mSkill == skill.mId; });
                 if (bonusIt != race->mData.mBonus.end())
                     bonus = bonusIt->mBonus;
 
@@ -167,7 +156,8 @@ namespace MWMechanics
 
             for (const ESM::RefId& power : race->mPowers.mList)
             {
-                creatureStats.getSpells().add(power);
+                if (const ESM::Spell* spell = esmStore.get<ESM::Spell>().search(power))
+                    creatureStats.getSpells().add(spell);
             }
         }
 
@@ -180,7 +170,8 @@ namespace MWMechanics
 
             for (const ESM::RefId& power : sign->mPowers.mList)
             {
-                creatureStats.getSpells().add(power);
+                if (const ESM::Spell* spell = esmStore.get<ESM::Spell>().search(power))
+                    creatureStats.getSpells().add(spell);
             }
         }
 
@@ -189,23 +180,21 @@ namespace MWMechanics
         {
             const ESM::Class* playerClass = esmStore.get<ESM::Class>().find(player->mClass);
 
-            for (int attribute : playerClass->mData.mAttribute)
+            for (const ESM::RefId& id : playerClass->mData.mAttribute)
             {
-                ESM::RefId id = ESM::Attribute::indexToRefId(attribute);
                 if (!id.empty())
                     creatureStats.setAttribute(id, creatureStats.getAttribute(id).getBase() + 10);
             }
 
-            for (int i = 0; i < 2; ++i)
+            for (const auto& id : playerClass->mData.mMinorSkills)
             {
-                int bonus = i == 0 ? 10 : 25;
-
-                for (const auto& skills : playerClass->mData.mSkills)
-                {
-                    ESM::RefId id = ESM::Skill::indexToRefId(skills[i]);
-                    if (!id.empty())
-                        npcStats.getSkill(id).setBase(npcStats.getSkill(id).getBase() + bonus);
-                }
+                if (!id.empty())
+                    npcStats.getSkill(id).setBase(npcStats.getSkill(id).getBase() + 10);
+            }
+            for (const auto& id : playerClass->mData.mMajorSkills)
+            {
+                if (!id.empty())
+                    npcStats.getSkill(id).setBase(npcStats.getSkill(id).getBase() + 25);
             }
 
             for (const ESM::Skill& skill : esmStore.get<ESM::Skill>())
@@ -856,7 +845,6 @@ namespace MWMechanics
         mUpdatePlayer = true;
         mClassSelected = true;
         mRaceSelected = true;
-        mAI = true;
     }
 
     namespace
@@ -895,7 +883,7 @@ namespace MWMechanics
 
     bool MechanicsManager::isAllowedToUse(const MWWorld::Ptr& ptr, const MWWorld::Ptr& target, MWWorld::Ptr& victim)
     {
-        if (target.isEmpty())
+        if (target.isEmpty() || target == ptr)
             return true;
 
         const MWWorld::CellRef& cellref = target.getCellRef();
@@ -1454,7 +1442,7 @@ namespace MWMechanics
                     }
 
                     startCombat(actor, player, &playerFollowers);
-                    observerStats.setHitAttemptActorId(player.getClass().getCreatureStats(player).getActorId());
+                    observerStats.setHitAttemptActor(player.getCellRef().getRefNum());
 
                     // Apply aggression value to the base Fight rating, so that the actor can continue fighting
                     // after a Calm spell wears off
@@ -1571,9 +1559,8 @@ namespace MWMechanics
         const MWWorld::Class& cls = target.getClass();
         const MWMechanics::CreatureStats& stats = cls.getCreatureStats(target);
         const MWMechanics::AiSequence& seq = stats.getAiSequence();
-        return cls.isNpc() && !attacker.isEmpty() && !seq.isInCombat(attacker) && !isAggressive(target, attacker)
-            && !seq.isEngagedWithActor() && !stats.getAiSequence().isInPursuit()
-            && !cls.getNpcStats(target).isWerewolf()
+        return cls.isNpc() && !attacker.isEmpty() && !isAggressive(target, attacker) && !seq.isEngagedWithActor()
+            && !stats.getAiSequence().isInPursuit() && !cls.getNpcStats(target).isWerewolf()
             && stats.getMagicEffects().getOrDefault(ESM::MagicEffect::Vampirism).getMagnitude() <= 0;
     }
 
@@ -1734,8 +1721,9 @@ namespace MWMechanics
             // if guard starts combat with player, guards pursuing player should do the same
             if (ptr.getClass().isClass(ptr, "Guard"))
             {
+                const ESM::RefNum playerNum = target.getCellRef().getRefNum();
                 // Stops guard from ending combat if player is unreachable
-                stats.setHitAttemptActorId(target.getClass().getCreatureStats(target).getActorId());
+                stats.setHitAttemptActor(playerNum);
                 for (const Actor& actor : mActors)
                 {
                     if (actor.isInvalid())
@@ -1749,10 +1737,7 @@ namespace MWMechanics
                             aiSeq.stopPursuit();
                             aiSeq.stack(MWMechanics::AiCombat(target), ptr);
                             // Stops guard from ending combat if player is unreachable
-                            actor.getPtr()
-                                .getClass()
-                                .getCreatureStats(actor.getPtr())
-                                .setHitAttemptActorId(target.getClass().getCreatureStats(target).getActorId());
+                            actor.getPtr().getClass().getCreatureStats(actor.getPtr()).setHitAttemptActor(playerNum);
                         }
                     }
                 }
@@ -1862,49 +1847,6 @@ namespace MWMechanics
         mStolenItems.clear();
         mClassSelected = false;
         mRaceSelected = false;
-    }
-
-    bool MechanicsManager::isAggressive(const MWWorld::Ptr& ptr, const MWWorld::Ptr& target)
-    {
-        // Don't become aggressive if a calm effect is active, since it would cause combat to cycle on/off as
-        // combat is activated here and then canceled by the calm effect
-        if ((ptr.getClass().isNpc()
-                && ptr.getClass()
-                        .getCreatureStats(ptr)
-                        .getMagicEffects()
-                        .getOrDefault(ESM::MagicEffect::CalmHumanoid)
-                        .getMagnitude()
-                    > 0)
-            || (!ptr.getClass().isNpc()
-                && ptr.getClass()
-                        .getCreatureStats(ptr)
-                        .getMagicEffects()
-                        .getOrDefault(ESM::MagicEffect::CalmCreature)
-                        .getMagnitude()
-                    > 0))
-            return false;
-
-        int disposition = 50;
-        if (ptr.getClass().isNpc())
-            disposition = getDerivedDisposition(ptr);
-
-        int fight = ptr.getClass().getCreatureStats(ptr).getAiSetting(AiSetting::Fight).getModified()
-            + static_cast<int>(
-                getFightDistanceBias(ptr, target) + getFightDispositionBias(static_cast<float>(disposition)));
-
-        if (ptr.getClass().isNpc() && target.getClass().isNpc())
-        {
-            if (target.getClass().getNpcStats(target).isWerewolf()
-                || (target == getPlayer()
-                    && MWBase::Environment::get().getWorld()->getGlobalInt(MWWorld::Globals::sPCKnownWerewolf)))
-            {
-                const ESM::GameSetting* iWerewolfFightMod
-                    = MWBase::Environment::get().getESMStore()->get<ESM::GameSetting>().find("iWerewolfFightMod");
-                fight += iWerewolfFightMod->mValue.getInteger();
-            }
-        }
-
-        return (fight >= 100);
     }
 
     void MechanicsManager::resurrect(const MWWorld::Ptr& ptr)
@@ -2038,12 +1980,13 @@ namespace MWMechanics
             = MWBase::Environment::get().getESMStore()->get<ESM::Skill>().find(ESM::Skill::Acrobatics);
         MWMechanics::NpcStats& stats = actor.getClass().getNpcStats(actor);
         auto& skill = stats.getSkill(acrobatics->mId);
-        skill.setModifier(acrobatics->mWerewolfValue - skill.getModified());
+        skill.setBase(skill.getBase(), true);
+        skill.setModifier(acrobatics->mWerewolfValue - skill.getBase());
     }
 
-    void MechanicsManager::cleanupSummonedCreature(const MWWorld::Ptr& caster, int creatureActorId)
+    void MechanicsManager::cleanupSummonedCreature(ESM::RefNum creature)
     {
-        mActors.cleanupSummonedCreature(caster.getClass().getCreatureStats(caster), creatureActorId);
+        mActors.cleanupSummonedCreature(creature);
     }
 
     void MechanicsManager::reportStats(unsigned int frameNumber, osg::Stats& stats) const
@@ -2065,11 +2008,6 @@ namespace MWMechanics
     GreetingState MechanicsManager::getGreetingState(const MWWorld::Ptr& ptr) const
     {
         return mActors.getGreetingState(ptr);
-    }
-
-    bool MechanicsManager::isTurningToPlayer(const MWWorld::Ptr& ptr) const
-    {
-        return mActors.isTurningToPlayer(ptr);
     }
 
     void MechanicsManager::fastForwardAi() const

@@ -9,7 +9,6 @@
 #include <osg/ColorMaski>
 #include <osg/GLExtensions>
 #include <osg/Geometry>
-#include <osg/Material>
 #include <osg/Multisample>
 #include <osg/Texture>
 #include <osg/ValueObject>
@@ -23,6 +22,7 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/sceneutil/glextensions.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/riggeometryosgaextension.hpp>
@@ -44,7 +44,6 @@ namespace Shader
      * the TypeMemberPair as that uniquely identifies which of those StateAttributes it was we're tracking.
      * Not all StateSet features have been added yet - we implement an equivalently-named method to each of the StateSet
      * methods called in createProgram, and implement new ones as they're needed.
-     * When expanding tracking to cover new things, ensure they're accounted for in ensureFFP.
      */
     class AddedState : public osg::Object
     {
@@ -55,7 +54,6 @@ namespace Shader
             , mUniforms(rhs.mUniforms)
             , mModes(rhs.mModes)
             , mAttributes(rhs.mAttributes)
-            , mTextureModes(rhs.mTextureModes)
         {
         }
 
@@ -82,7 +80,6 @@ namespace Shader
             setAttributeAndModes(attribute.get());
         }
 
-        void setTextureMode(unsigned int unit, osg::StateAttribute::GLMode mode) { mTextureModes[unit].emplace(mode); }
         void setTextureAttribute(int unit, osg::StateAttribute::TypeMemberPair typeMemberPair)
         {
             mTextureAttributes[unit].emplace(typeMemberPair);
@@ -98,18 +95,6 @@ namespace Shader
             setTextureAttribute(unit, attribute.get());
         }
 
-        void setTextureAttributeAndModes(unsigned int unit, const osg::StateAttribute* attribute)
-        {
-            setTextureAttribute(unit, attribute);
-            InterrogateModesHelper helper(this, unit);
-            attribute->getModeUsage(helper);
-        }
-        template <typename T>
-        void setTextureAttributeAndModes(unsigned int unit, osg::ref_ptr<T> attribute)
-        {
-            setTextureAttributeAndModes(unit, attribute.get());
-        }
-
         bool hasUniform(const std::string& name) { return mUniforms.count(name); }
         bool hasMode(osg::StateAttribute::GLMode mode) { return mModes.count(mode); }
         bool hasAttribute(const osg::StateAttribute::TypeMemberPair& typeMemberPair)
@@ -120,14 +105,6 @@ namespace Shader
         {
             return hasAttribute(osg::StateAttribute::TypeMemberPair(type, member));
         }
-        bool hasTextureMode(int unit, osg::StateAttribute::GLMode mode)
-        {
-            auto it = mTextureModes.find(unit);
-            if (it == mTextureModes.cend())
-                return false;
-
-            return it->second.count(mode);
-        }
 
         const std::set<osg::StateAttribute::TypeMemberPair>& getAttributes() { return mAttributes; }
         const std::unordered_map<unsigned int, std::set<osg::StateAttribute::TypeMemberPair>>& getTextureAttributes()
@@ -137,8 +114,7 @@ namespace Shader
 
         bool empty()
         {
-            return mUniforms.empty() && mModes.empty() && mAttributes.empty() && mTextureModes.empty()
-                && mTextureAttributes.empty();
+            return mUniforms.empty() && mModes.empty() && mAttributes.empty() && mTextureAttributes.empty();
         }
 
         META_Object(Shader, AddedState)
@@ -147,20 +123,15 @@ namespace Shader
         class InterrogateModesHelper : public osg::StateAttribute::ModeUsage
         {
         public:
-            InterrogateModesHelper(AddedState* tracker, unsigned int textureUnit = 0)
+            InterrogateModesHelper(AddedState* tracker)
                 : mTracker(tracker)
-                , mTextureUnit(textureUnit)
             {
             }
             void usesMode(osg::StateAttribute::GLMode mode) override { mTracker->setMode(mode); }
-            void usesTextureMode(osg::StateAttribute::GLMode mode) override
-            {
-                mTracker->setTextureMode(mTextureUnit, mode);
-            }
+            void usesTextureMode(osg::StateAttribute::GLMode mode) override {}
 
         private:
             AddedState* mTracker;
-            unsigned int mTextureUnit;
         };
 
         using ModeSet = std::unordered_set<osg::StateAttribute::GLMode>;
@@ -169,15 +140,11 @@ namespace Shader
         std::unordered_set<std::string> mUniforms;
         ModeSet mModes;
         AttributeSet mAttributes;
-        std::unordered_map<unsigned int, ModeSet> mTextureModes;
         std::unordered_map<unsigned int, AttributeSet> mTextureAttributes;
     };
 
     ShaderVisitor::ShaderRequirements::ShaderRequirements()
-        : mShaderRequired(false)
-        , mColorMode(0)
-        , mMaterialOverridden(false)
-        , mAlphaTestOverridden(false)
+        : mAlphaTestOverridden(false)
         , mAlphaBlendOverridden(false)
         , mAlphaFunc(GL_ALWAYS)
         , mAlphaRef(1.0)
@@ -196,11 +163,9 @@ namespace Shader
     ShaderVisitor::ShaderVisitor(
         ShaderManager& shaderManager, Resource::ImageManager& imageManager, const std::string& defaultShaderPrefix)
         : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
-        , mForceShaders(false)
         , mAllowedToModifyStateSets(true)
         , mAutoUseNormalMaps(false)
         , mAutoUseSpecularMaps(false)
-        , mApplyLightingToEnvMaps(false)
         , mConvertAlphaTestToAlphaToCoverage(false)
         , mAdjustCoverageForAlphaTest(false)
         , mSupportsNormalsRT(false)
@@ -208,11 +173,6 @@ namespace Shader
         , mImageManager(imageManager)
         , mDefaultShaderPrefix(defaultShaderPrefix)
     {
-    }
-
-    void ShaderVisitor::setForceShaders(bool force)
-    {
-        mForceShaders = force;
     }
 
     void ShaderVisitor::apply(osg::Node& node)
@@ -306,9 +266,6 @@ namespace Shader
         if (mAllowedToModifyStateSets)
             writableStateSet = node.getStateSet();
         const osg::StateSet::TextureAttributeList& texAttributes = stateset->getTextureAttributeList();
-        bool shaderRequired = false;
-        if (node.getUserValue("shaderRequired", shaderRequired) && shaderRequired)
-            mRequirements.back().mShaderRequired = true;
 
         bool softEffect = false;
         if (node.getUserValue(Misc::OsgUserValues::sXSoftEffect, softEffect) && softEffect)
@@ -328,11 +285,6 @@ namespace Shader
                 const osg::StateAttribute* attr = stateset->getTextureAttribute(unit, osg::StateAttribute::TEXTURE);
                 if (attr)
                 {
-                    // If textures ever get removed in createProgram, expand this to check we're operating on main
-                    // texture attribute list rather than the removed list
-                    if (addedState && addedState->hasTextureMode(unit, GL_TEXTURE_2D))
-                        continue;
-
                     const osg::Texture* texture = attr->asTexture();
                     if (texture)
                     {
@@ -352,12 +304,6 @@ namespace Shader
                             if (texName == "normalMap")
                             {
                                 mRequirements.back().mTexStageRequiringTangents = unit;
-                                mRequirements.back().mShaderRequired = true;
-                                if (!writableStateSet)
-                                    writableStateSet = getWritableStateSet(node);
-                                // normal maps are by default off since the FFP can't render them, now that we'll use
-                                // shaders switch to On
-                                writableStateSet->setTextureMode(unit, GL_TEXTURE_2D, osg::StateAttribute::ON);
                                 normalMap = texture;
                             }
                             else if (texName == "diffuseMap")
@@ -366,7 +312,6 @@ namespace Shader
                                 // Oblivion parallax
                                 if (node.getUserValue("applyMode", applyMode) && applyMode == 4)
                                 {
-                                    mRequirements.back().mShaderRequired = true;
                                     mRequirements.back().mDiffuseHeight = true;
                                     mRequirements.back().mTexStageRequiringTangents = unit;
                                 }
@@ -377,23 +322,6 @@ namespace Shader
                             else if (texName == "bumpMap")
                             {
                                 bumpMap = texture;
-                                mRequirements.back().mShaderRequired = true;
-                                if (!writableStateSet)
-                                    writableStateSet = getWritableStateSet(node);
-                                // Bump maps are off by default as well
-                                writableStateSet->setTextureMode(unit, GL_TEXTURE_2D, osg::StateAttribute::ON);
-                            }
-                            else if (texName == "envMap" && mApplyLightingToEnvMaps)
-                            {
-                                mRequirements.back().mShaderRequired = true;
-                            }
-                            else if (texName == "glossMap")
-                            {
-                                mRequirements.back().mShaderRequired = true;
-                                if (!writableStateSet)
-                                    writableStateSet = getWritableStateSet(node);
-                                // As well as gloss maps
-                                writableStateSet->setTextureMode(unit, GL_TEXTURE_2D, osg::StateAttribute::ON);
                             }
                         }
                         else
@@ -444,13 +372,12 @@ namespace Shader
                     int unit = static_cast<int>(texAttributes.size());
                     if (!writableStateSet)
                         writableStateSet = getWritableStateSet(node);
-                    writableStateSet->setTextureAttributeAndModes(unit, normalMapTex, osg::StateAttribute::ON);
-                    writableStateSet->setTextureAttributeAndModes(unit,
+                    writableStateSet->setTextureAttribute(unit, normalMapTex, osg::StateAttribute::ON);
+                    writableStateSet->setTextureAttribute(unit,
                         new SceneUtil::TextureType(normalHeight ? "normalHeightMap" : "normalMap"),
                         osg::StateAttribute::ON);
                     mRequirements.back().mTextures[unit] = "normalMap";
                     mRequirements.back().mTexStageRequiringTangents = unit;
-                    mRequirements.back().mShaderRequired = true;
                     mRequirements.back().mNormalHeight = normalHeight;
                 }
             }
@@ -490,11 +417,10 @@ namespace Shader
                     int unit = static_cast<int>(texAttributes.size());
                     if (!writableStateSet)
                         writableStateSet = getWritableStateSet(node);
-                    writableStateSet->setTextureAttributeAndModes(unit, specularMapTex, osg::StateAttribute::ON);
-                    writableStateSet->setTextureAttributeAndModes(
+                    writableStateSet->setTextureAttribute(unit, specularMapTex, osg::StateAttribute::ON);
+                    writableStateSet->setTextureAttribute(
                         unit, new SceneUtil::TextureType("specularMap"), osg::StateAttribute::ON);
                     mRequirements.back().mTextures[unit] = "specularMap";
-                    mRequirements.back().mShaderRequired = true;
                 }
             }
         }
@@ -514,41 +440,10 @@ namespace Shader
                     continue;
                 if (it->first.first == osg::StateAttribute::MATERIAL)
                 {
-                    // This should probably be moved out of ShaderRequirements and be applied directly now it's a
-                    // uniform instead of a define
-                    if (!mRequirements.back().mMaterialOverridden || it->second.second & osg::StateAttribute::PROTECTED)
-                    {
-                        if (it->second.second & osg::StateAttribute::OVERRIDE)
-                            mRequirements.back().mMaterialOverridden = true;
-
-                        const osg::Material* mat = static_cast<const osg::Material*>(it->second.first.get());
-
-                        int colorMode;
-                        switch (mat->getColorMode())
-                        {
-                            case osg::Material::OFF:
-                                colorMode = 0;
-                                break;
-                            case osg::Material::EMISSION:
-                                colorMode = 1;
-                                break;
-                            default:
-                            case osg::Material::AMBIENT_AND_DIFFUSE:
-                                colorMode = 2;
-                                break;
-                            case osg::Material::AMBIENT:
-                                colorMode = 3;
-                                break;
-                            case osg::Material::DIFFUSE:
-                                colorMode = 4;
-                                break;
-                            case osg::Material::SPECULAR:
-                                colorMode = 5;
-                                break;
-                        }
-
-                        mRequirements.back().mColorMode = colorMode;
-                    }
+                    if (!writableStateSet)
+                        writableStateSet = getWritableStateSet(node);
+                    static_cast<const SceneUtil::Material*>(it->second.first.get())
+                        ->setStateSet(writableStateSet, it->second.second);
                 }
                 else if (it->first.first == osg::StateAttribute::ALPHAFUNC)
                 {
@@ -606,12 +501,6 @@ namespace Shader
 
     void ShaderVisitor::createProgram(const ShaderRequirements& reqs)
     {
-        if (!reqs.mShaderRequired && !mForceShaders)
-        {
-            ensureFFP(*reqs.mNode);
-            return;
-        }
-
         /**
          * The shader visitor is supposed to be idempotent and undoable.
          * That means we need to back up state we've removed (so it can be restored and/or considered by further
@@ -661,12 +550,7 @@ namespace Shader
         defineMap["diffuseParallax"] = reqs.mDiffuseHeight ? "1" : "0";
         defineMap["parallax"] = reqs.mNormalHeight ? "1" : "0";
         defineMap["reconstructNormalZ"] = reqs.mReconstructNormalZ ? "1" : "0";
-
-        writableStateSet->addUniform(new osg::Uniform("colorMode", reqs.mColorMode));
-        addedState->addUniform("colorMode");
-
         defineMap["alphaFunc"] = std::to_string(reqs.mAlphaFunc);
-
         defineMap["additiveBlending"] = reqs.mAdditiveBlending ? "1" : "0";
 
         osg::ref_ptr<osg::StateSet> removedState;
@@ -690,7 +574,7 @@ namespace Shader
             }
             // This prevents redundant glAlphaFunc calls while letting the shadows bin still see the test
             writableStateSet->setAttribute(RemovedAlphaFunc::getInstance(reqs.mAlphaFunc),
-                osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+                osg::StateAttribute::ON | osg::StateAttribute::PROTECTED);
             addedState->setAttribute(RemovedAlphaFunc::getInstance(reqs.mAlphaFunc));
 
             // Blending won't work with A2C as we use the alpha channel for coverage. gl_SampleCoverage from
@@ -714,12 +598,16 @@ namespace Shader
             // We could fall back to a texture size uniform if EXT_gpu_shader4 is missing
         }
 
+        bool isParticle = dynamic_cast<osgParticle::ParticleSystem*>(&node);
+        defineMap["particle"] = isParticle ? "1" : "0";
+
         bool simpleLighting = false;
         node.getUserValue("simpleLighting", simpleLighting);
-        if (simpleLighting)
-            defineMap["endLight"] = "0";
 
-        if (simpleLighting || dynamic_cast<osgParticle::ParticleSystem*>(&node))
+        if (simpleLighting)
+            defineMap["simpleLighting"] = "1";
+
+        if (simpleLighting || isParticle)
             defineMap["forcePPL"] = "0";
 
         bool particleOcclusion = false;
@@ -770,15 +658,13 @@ namespace Shader
         if (!node.getUserValue("shaderPrefix", shaderPrefix))
             shaderPrefix = mDefaultShaderPrefix;
 
-        auto program = mShaderManager.getProgram(shaderPrefix, defineMap, mProgramTemplate);
+        ShaderManager::SamplerBindingMap samplers;
+        for (const auto& [unit, name] : reqs.mTextures)
+            samplers[name] = unit;
+
+        auto program = mShaderManager.getProgram(shaderPrefix, defineMap, mProgramTemplate, samplers);
         writableStateSet->setAttributeAndModes(program, osg::StateAttribute::ON);
         addedState->setAttributeAndModes(std::move(program));
-
-        for (const auto& [unit, name] : reqs.mTextures)
-        {
-            writableStateSet->addUniform(new osg::Uniform(name.c_str(), unit), osg::StateAttribute::ON);
-            addedState->addUniform(name);
-        }
 
         if (!addedState->empty())
         {
@@ -793,107 +679,11 @@ namespace Shader
         }
     }
 
-    void ShaderVisitor::ensureFFP(osg::Node& node)
-    {
-        if (!node.getStateSet() || !node.getStateSet()->getAttribute(osg::StateAttribute::PROGRAM))
-            return;
-        osg::StateSet* writableStateSet = nullptr;
-        if (mAllowedToModifyStateSets)
-            writableStateSet = node.getStateSet();
-        else
-            writableStateSet = getWritableStateSet(node);
-
-        /**
-         * We might have been using shaders temporarily with the node (e.g. if a GlowUpdater applied a temporary
-         * environment map for a temporary enchantment).
-         * We therefore need to remove any state doing so added, and restore any that it removed.
-         * This is kept track of in createProgram in the StateSet's userdata.
-         * If new classes of state get added, handling it here is required - not all StateSet features are implemented
-         * in AddedState yet as so far they've not been necessary.
-         * Removed state requires no particular special handling as it's dealt with by merging StateSets.
-         * We don't need to worry about state in writableStateSet having the OVERRIDE flag as if it's in both, it's also
-         * in addedState, and gets removed first.
-         */
-
-        // user data is normally shallow copied so shared with the original stateset - we'll need to copy before edits
-        osg::ref_ptr<osg::UserDataContainer> writableUserData;
-
-        if (osg::ref_ptr<AddedState> addedState = getAddedState(*writableStateSet))
-        {
-            if (mAllowedToModifyStateSets)
-                writableUserData = writableStateSet->getUserDataContainer();
-            else
-                writableUserData = getWritableUserDataContainer(*writableStateSet);
-
-            unsigned int index = writableUserData->getUserObjectIndex("addedState");
-            writableUserData->removeUserObject(index);
-
-            // O(n log n) to use StateSet::removeX, but this is O(n)
-            for (auto itr = writableStateSet->getUniformList().begin();
-                 itr != writableStateSet->getUniformList().end();)
-            {
-                if (addedState->hasUniform(itr->first))
-                    writableStateSet->getUniformList().erase(itr++);
-                else
-                    ++itr;
-            }
-
-            for (auto itr = writableStateSet->getModeList().begin(); itr != writableStateSet->getModeList().end();)
-            {
-                if (addedState->hasMode(itr->first))
-                    writableStateSet->getModeList().erase(itr++);
-                else
-                    ++itr;
-            }
-
-            // StateAttributes track the StateSets they're attached to
-            // We don't have access to the function to do that, and can't call removeAttribute with an iterator
-            for (const auto& [type, member] : addedState->getAttributes())
-                writableStateSet->removeAttribute(type, member);
-
-            for (unsigned int unit = 0; unit < writableStateSet->getTextureModeList().size(); ++unit)
-            {
-                for (auto itr = writableStateSet->getTextureModeList()[unit].begin();
-                     itr != writableStateSet->getTextureModeList()[unit].end();)
-                {
-                    if (addedState->hasTextureMode(unit, itr->first))
-                        writableStateSet->getTextureModeList()[unit].erase(itr++);
-                    else
-                        ++itr;
-                }
-            }
-
-            for (const auto& [unit, attributeList] : addedState->getTextureAttributes())
-            {
-                for (const auto& [type, member] : attributeList)
-                    writableStateSet->removeTextureAttribute(unit, type);
-            }
-        }
-
-        if (osg::ref_ptr<osg::StateSet> removedState = getRemovedState(*writableStateSet))
-        {
-            if (!writableUserData)
-            {
-                if (mAllowedToModifyStateSets)
-                    writableUserData = writableStateSet->getUserDataContainer();
-                else
-                    writableUserData = getWritableUserDataContainer(*writableStateSet);
-            }
-
-            unsigned int index = writableUserData->getUserObjectIndex("removedState");
-            writableUserData->removeUserObject(index);
-
-            writableStateSet->merge(*removedState);
-        }
-    }
-
     bool ShaderVisitor::adjustGeometry(osg::Geometry& sourceGeometry, const ShaderRequirements& reqs)
     {
-        bool useShader = reqs.mShaderRequired || mForceShaders;
-        bool generateTangents = reqs.mTexStageRequiringTangents != -1;
         bool changed = false;
 
-        if (mAllowedToModifyStateSets && (useShader || generateTangents))
+        if (mAllowedToModifyStateSets)
         {
             // make sure that all UV sets are there
             // it's not safe to assume there's one for slot zero, so try and use one from another slot if possible
@@ -922,6 +712,8 @@ namespace Shader
                     changed = true;
                 }
             }
+
+            bool generateTangents = reqs.mTexStageRequiringTangents != -1;
 
             if (generateTangents)
             {
@@ -952,8 +744,6 @@ namespace Shader
 
             createProgram(reqs);
         }
-        else
-            ensureFFP(geometry);
 
         if (needPop)
             popRequirements();
@@ -1036,11 +826,6 @@ namespace Shader
         mSpecularMapPattern = pattern;
     }
 
-    void ShaderVisitor::setApplyLightingToEnvMaps(bool apply)
-    {
-        mApplyLightingToEnvMaps = apply;
-    }
-
     void ShaderVisitor::setConvertAlphaTestToAlphaToCoverage(bool convert)
     {
         mConvertAlphaTestToAlphaToCoverage = convert;
@@ -1088,12 +873,6 @@ namespace Shader
 
                 for (const auto& attribute : removedState->getAttributeList())
                     writableStateSet->setAttribute(attribute.second.first, attribute.second.second);
-
-                for (unsigned int unit = 0; unit < removedState->getTextureModeList().size(); ++unit)
-                {
-                    for (const auto& [mode, value] : removedState->getTextureModeList()[unit])
-                        writableStateSet->setTextureMode(unit, mode, value);
-                }
             }
         }
 

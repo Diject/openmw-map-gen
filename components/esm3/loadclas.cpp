@@ -2,7 +2,9 @@
 
 #include <stdexcept>
 
+#include <components/esm/attr.hpp>
 #include <components/esm/defs.hpp>
+#include <components/esm3/loadskil.hpp>
 #include <components/misc/concepts.hpp>
 
 #include "esmreader.hpp"
@@ -14,20 +16,71 @@ namespace ESM
         = { "sSpecializationCombat", "sSpecializationMagic", "sSpecializationStealth" };
     const std::array<std::string_view, 3> Class::specializationIndexToLuaId = { "combat", "magic", "stealth" };
 
+    namespace
+    {
+        struct EsmCLDTstruct
+        {
+            std::array<int32_t, 2> mAttribute;
+            int32_t mSpecialization;
+            std::array<std::array<int32_t, 2>, 5> mSkills;
+            char mIsPlayable;
+            int32_t mServices;
+        };
+
+        void toBinary(const Class::CLDTstruct& src, EsmCLDTstruct& dst)
+        {
+            dst.mAttribute[0] = ESM::Attribute::refIdToIndex(src.mAttribute[0]);
+            dst.mAttribute[1] = ESM::Attribute::refIdToIndex(src.mAttribute[1]);
+            dst.mSpecialization = src.mSpecialization;
+            for (std::size_t i = 0; i < dst.mSkills.size(); ++i)
+            {
+                dst.mSkills[i][0] = ESM::Skill::refIdToIndex(src.mMinorSkills[i]);
+                dst.mSkills[i][1] = ESM::Skill::refIdToIndex(src.mMajorSkills[i]);
+            }
+            dst.mIsPlayable = src.mIsPlayable;
+            dst.mServices = src.mServices;
+        }
+
+        void fromBinary(const EsmCLDTstruct& src, Class::CLDTstruct& dst)
+        {
+            dst.mAttribute[0] = ESM::Attribute::indexToRefId(src.mAttribute[0]);
+            dst.mAttribute[1] = ESM::Attribute::indexToRefId(src.mAttribute[1]);
+            dst.mSpecialization = src.mSpecialization;
+            for (std::size_t i = 0; i < src.mSkills.size(); ++i)
+            {
+                dst.mMinorSkills[i] = ESM::Skill::indexToRefId(src.mSkills[i][0]);
+                dst.mMajorSkills[i] = ESM::Skill::indexToRefId(src.mSkills[i][1]);
+            }
+            dst.mIsPlayable = src.mIsPlayable;
+            dst.mServices = src.mServices;
+        }
+    }
+
+    template <Misc::SameAsWithoutCvref<EsmCLDTstruct> T>
+    void decompose(T&& v, const auto& f)
+    {
+        char padding[] = { 0, 0, 0 };
+        f(v.mAttribute, v.mSpecialization, v.mSkills, v.mIsPlayable, padding, v.mServices);
+    }
+
     template <Misc::SameAsWithoutCvref<Class::CLDTstruct> T>
     void decompose(T&& v, const auto& f)
     {
-        f(v.mAttribute, v.mSpecialization, v.mSkills, v.mIsPlayable, v.mServices);
+        f(v.mSpecialization, v.mIsPlayable, v.mServices);
     }
 
-    int32_t& Class::CLDTstruct::getSkill(int index, bool major)
+    ESM::RefId& Class::CLDTstruct::getSkill(int index, bool major)
     {
-        return mSkills.at(index)[major ? 1 : 0];
+        if (major)
+            return mMajorSkills.at(index);
+        return mMinorSkills.at(index);
     }
 
-    int32_t Class::CLDTstruct::getSkill(int index, bool major) const
+    ESM::RefId Class::CLDTstruct::getSkill(int index, bool major) const
     {
-        return mSkills.at(index)[major ? 1 : 0];
+        if (major)
+            return mMajorSkills.at(index);
+        return mMinorSkills.at(index);
     }
 
     void Class::load(ESMReader& esm, bool& isDeleted)
@@ -50,11 +103,26 @@ namespace ESM
                     mName = esm.getHString();
                     break;
                 case fourCC("CLDT"):
-                    esm.getSubComposite(mData);
-                    if (mData.mIsPlayable > 1)
-                        esm.fail("Unknown bool value");
+                {
+                    if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+                    {
+                        EsmCLDTstruct data;
+                        esm.getSubComposite(data);
+                        fromBinary(data, mData);
+                    }
+                    else
+                    {
+                        esm.getSubComposite(mData);
+                        for (RefId& id : mData.mAttribute)
+                            id = esm.getHNRefId("ATTR");
+                        for (RefId& id : mData.mMajorSkills)
+                            id = esm.getHNRefId("MASK");
+                        for (RefId& id : mData.mMinorSkills)
+                            id = esm.getHNRefId("MISK");
+                    }
                     hasData = true;
                     break;
+                }
                 case fourCC("DESC"):
                     mDescription = esm.getHString();
                     break;
@@ -84,7 +152,22 @@ namespace ESM
         }
 
         esm.writeHNOCString("FNAM", mName);
-        esm.writeNamedComposite("CLDT", mData);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            EsmCLDTstruct data;
+            toBinary(mData, data);
+            esm.writeNamedComposite("CLDT", data);
+        }
+        else
+        {
+            esm.writeNamedComposite("CLDT", mData);
+            for (const ESM::RefId& id : mData.mAttribute)
+                esm.writeHNRefId("ATTR", id);
+            for (const ESM::RefId& id : mData.mMajorSkills)
+                esm.writeHNRefId("MASK", id);
+            for (const ESM::RefId& id : mData.mMinorSkills)
+                esm.writeHNRefId("MISK", id);
+        }
         esm.writeHNOString("DESC", mDescription);
     }
 
@@ -94,12 +177,12 @@ namespace ESM
         mName.clear();
         mDescription.clear();
 
-        mData.mAttribute.fill(0);
+        mData.mAttribute.fill({});
         mData.mSpecialization = 0;
         mData.mIsPlayable = 0;
         mData.mServices = 0;
 
-        for (auto& skills : mData.mSkills)
-            skills.fill(0);
+        mData.mMinorSkills.fill({});
+        mData.mMajorSkills.fill({});
     }
 }

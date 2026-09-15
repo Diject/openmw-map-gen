@@ -1,9 +1,5 @@
 #version 120
 
-#if @useUBO
-    #extension GL_ARB_uniform_buffer_object : require
-#endif
-
 #if @useGPUShader4
     #extension GL_EXT_gpu_shader4: require
 #endif
@@ -17,10 +13,12 @@ attribute vec3 aRotation;
 
 #if @diffuseMap
 varying vec2 diffuseMapUV;
+uniform mat4 texMat@diffuseMapUV;
 #endif
 
 #if @normalMap
 varying vec2 normalMapUV;
+uniform mat4 texMat@normalMapUV;
 #endif
 
 // Other shaders respect forcePPL, but legacy groundcover mods were designed to work with vertex lighting.
@@ -30,18 +28,17 @@ varying vec2 normalMapUV;
 varying float euclideanDepth;
 varying float linearDepth;
 
-#if PER_PIXEL_LIGHTING
-varying vec3 passViewPos;
-#else
+#if !PER_PIXEL_LIGHTING
+centroid varying vec3 shadedLighting;
 centroid varying vec3 passLighting;
-centroid varying vec3 shadowDiffuseLighting;
+#include "lib/light/clamp.glsl"
 #endif
 
 varying vec3 passNormal;
+varying vec3 passViewPos;
 
 #include "shadows_vertex.glsl"
 #include "compatibility/normals.glsl"
-#include "lib/light/lighting.glsl"
 #include "lib/view/depth.glsl"
 
 uniform float osg_SimulationTime;
@@ -49,6 +46,8 @@ uniform mat4 osg_ViewMatrixInverse;
 uniform mat4 osg_ViewMatrix;
 uniform float windSpeed;
 uniform vec3 playerPos;
+
+centroid varying vec4 passColor;
 
 #if @groundcoverStompMode == 0
 #else
@@ -127,6 +126,8 @@ mat3 rotation3(in mat4 rot4)
 
 void main(void)
 {
+    Material material = getMaterial();
+
     vec3 position = aOffset.xyz;
     float scale = aOffset.w;
 
@@ -138,7 +139,7 @@ void main(void)
     vec4 worldPos = osg_ViewMatrixInverse * gl_ModelViewMatrix * displacedVertex;
     worldPos.xy += groundcoverDisplacement(worldPos.xyz, gl_Vertex.z);
     vec4 viewPos = osg_ViewMatrix * worldPos;
-
+    passViewPos = viewPos.xyz;
     gl_ClipVertex = viewPos;
     euclideanDepth = length(viewPos.xyz);
 
@@ -160,21 +161,26 @@ void main(void)
 #endif
 
 #if @diffuseMap
-    diffuseMapUV = (gl_TextureMatrix[@diffuseMapUV] * gl_MultiTexCoord@diffuseMapUV).xy;
+    diffuseMapUV = (texMat@diffuseMapUV * gl_MultiTexCoord@diffuseMapUV).xy;
 #endif
 
 #if @normalMap
-    normalMapUV = (gl_TextureMatrix[@normalMapUV] * gl_MultiTexCoord@normalMapUV).xy;
+    normalMapUV = (texMat@normalMapUV * gl_MultiTexCoord@normalMapUV).xy;
 #endif
 
 #if PER_PIXEL_LIGHTING
     passViewPos = viewPos.xyz;
 #else
-    vec3 diffuseLight, ambientLight, specularLight;
-    vec3 unusedShadowSpecular;
-    doLighting(viewPos.xyz, viewNormal, gl_FrontMaterial.shininess, diffuseLight, ambientLight, specularLight, shadowDiffuseLighting, unusedShadowSpecular);
-    passLighting = diffuseLight + ambientLight;
-    clampLightingResult(passLighting);
+    float shininess = max(1e-4, material.shininess);
+    vec3 viewDir = viewPos.xyz / euclideanDepth;
+
+    vec3 sunDiffuse, sunAmbient, unusedSpecular1, pointDiffuse, pointAmbient, unusedSpecular2;
+    directionalLighting(viewDir, viewNormal, shininess, sunDiffuse, sunAmbient, unusedSpecular1);
+    pointLighting(clipToScreen(gl_Position), viewDir, viewPos.xyz, viewNormal, shininess, pointDiffuse, pointAmbient, unusedSpecular2);
+    shadedLighting = pointDiffuse + pointAmbient + sunAmbient;
+    passLighting = shadedLighting + sunDiffuse;
+    clampLighting(shadedLighting);
+    clampLighting(passLighting);
 #endif
 
 #if (@shadows_enabled)

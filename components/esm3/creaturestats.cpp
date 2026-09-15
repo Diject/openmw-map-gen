@@ -2,6 +2,8 @@
 #include "esmreader.hpp"
 #include "esmwriter.hpp"
 
+#include <components/esm3/loadmgef.hpp>
+
 #include <limits>
 
 namespace ESM
@@ -9,9 +11,24 @@ namespace ESM
 
     void CreatureStats::load(ESMReader& esm)
     {
-        const bool intFallback = esm.getFormatVersion() <= MaxIntFallbackFormatVersion;
-        for (auto& attribute : mAttributes)
-            attribute.load(esm, intFallback);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            const bool intFallback = esm.getFormatVersion() <= MaxIntFallbackFormatVersion;
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+            {
+                StatState<float> stat;
+                stat.load(esm, intFallback);
+                mAttributes.emplace(ESM::Attribute::indexToRefId(i), std::move(stat));
+            }
+        }
+        else
+        {
+            while (esm.isNextSub("ATTR"))
+            {
+                ESM::RefId attribute = esm.getRefId();
+                mAttributes[attribute].load(esm);
+            }
+        }
 
         for (auto& dynamic : mDynamic)
             dynamic.load(esm);
@@ -117,19 +134,31 @@ namespace ESM
                 esm.getHNOT(effectIndex, "EIND");
                 int32_t actorId;
                 esm.getHNT(actorId, "ACID");
-                mSummonedCreatureMap[SummonKey(magicEffect, source, effectIndex)] = actorId;
-                mSummonedCreatures.emplace(magicEffect, actorId);
+                mSummonedCreatureMap[SummonKey(ESM::MagicEffect::indexToRefId(magicEffect), source, effectIndex)]
+                    = actorId;
+                mSummonedCreatures.emplace(ESM::MagicEffect::indexToRefId(magicEffect),
+                    RefNum{ .mIndex = static_cast<uint32_t>(actorId), .mContentFile = -1 });
             }
         }
         else
         {
             while (esm.isNextSub("SUMM"))
             {
-                int32_t magicEffect;
-                esm.getHT(magicEffect);
-                int32_t actorId;
-                esm.getHNT(actorId, "ACID");
-                mSummonedCreatures.emplace(magicEffect, actorId);
+                RefId effectId;
+                if (esm.getFormatVersion() <= MaxSerializeEffectRefIdFormatVersion)
+                {
+                    int32_t magicEffect;
+                    esm.getHT(magicEffect);
+                    effectId = ESM::MagicEffect::indexToRefId(magicEffect);
+                }
+                else
+                    effectId = esm.getRefId();
+                RefNum actor;
+                if (esm.getFormatVersion() <= MaxActorIdSaveGameFormatVersion)
+                    esm.getHNT(actor.mIndex, "ACID");
+                else
+                    actor = esm.getFormId(true, "ACID");
+                mSummonedCreatures.emplace(effectId, actor);
             }
         }
 
@@ -170,8 +199,26 @@ namespace ESM
 
     void CreatureStats::save(ESMWriter& esm) const
     {
-        for (const auto& attribute : mAttributes)
-            attribute.save(esm);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            // This branch is only used in tests. It probably shouldn't exist.
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+            {
+                const auto it = mAttributes.find(ESM::Attribute::indexToRefId(i));
+                if (it != mAttributes.end())
+                    it->second.save(esm);
+                else
+                    StatState<float>{}.save(esm);
+            }
+        }
+        else
+        {
+            for (const auto& [attribute, value] : mAttributes)
+            {
+                esm.writeHNRefId("ATTR", attribute);
+                value.save(esm);
+            }
+        }
 
         for (const auto& dynamic : mDynamic)
             dynamic.save(esm);
@@ -231,9 +278,6 @@ namespace ESM
         if (mLevel != 1)
             esm.writeHNT("LEVL", mLevel);
 
-        if (mActorId != -1)
-            esm.writeHNT("ACID", mActorId);
-
         if (mDeathAnimation != -1)
             esm.writeHNT("DANM", mDeathAnimation);
 
@@ -245,15 +289,10 @@ namespace ESM
         mAiSequence.save(esm);
         mMagicEffects.save(esm);
 
-        for (const auto& [effectId, actorId] : mSummonedCreatures)
+        for (const auto& [effectId, actor] : mSummonedCreatures)
         {
-            esm.writeHNT("SUMM", effectId);
-            esm.writeHNT("ACID", actorId);
-        }
-
-        for (int32_t key : mSummonGraveyard)
-        {
-            esm.writeHNT("GRAV", key);
+            esm.writeHNRefId("SUMM", effectId);
+            esm.writeFormId(actor, true, "ACID");
         }
 
         esm.writeHNT("AISE", mHasAiSettings);

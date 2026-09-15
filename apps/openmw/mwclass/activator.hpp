@@ -38,10 +38,12 @@ namespace MWClass
         ESM::RefId getScript(const MWWorld::ConstPtr& ptr) const override;
         ///< Return name of the script attached to ptr
 
+        std::string_view getWerewolfRefusalSoundId() const override { return "WolfActivator"; }
+
         std::unique_ptr<MWWorld::Action> activate(const MWWorld::Ptr& ptr, const MWWorld::Ptr& actor) const override;
         ///< Generate action for activation
 
-        std::string_view getModel(const MWWorld::ConstPtr& ptr) const override;
+        VFS::Path::NormalizedView getModel(const MWWorld::ConstPtr& ptr) const override;
 
         bool useAnim() const override;
         ///< Whether or not to use animated variant of model (default false)

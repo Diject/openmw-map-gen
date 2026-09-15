@@ -4,12 +4,11 @@
 #include <osg/Capability>
 #include <osg/Depth>
 #include <osg/Fog>
-#include <osg/TexEnvCombine>
-#include <osg/TexMat>
 #include <osg/Texture2D>
 
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/depth.hpp>
+#include <components/sceneutil/texmat.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/stereomanager.hpp>
@@ -21,13 +20,13 @@ namespace
     class BlendmapTexMat
     {
     public:
-        static const osg::ref_ptr<osg::TexMat>& value(const int blendmapScale)
+        static const osg::ref_ptr<osg::Uniform>& value(const int blendmapScale)
         {
             static BlendmapTexMat instance;
             return instance.get(static_cast<float>(blendmapScale));
         }
 
-        const osg::ref_ptr<osg::TexMat>& get(const float blendmapScale)
+        const osg::ref_ptr<osg::Uniform>& get(const float blendmapScale)
         {
             const std::lock_guard<std::mutex> lock(mMutex);
             auto texMat = mTexMatMap.find(blendmapScale);
@@ -41,28 +40,28 @@ namespace
                 // We need to nudge the blendmap to look like vanilla.
                 // This causes visible seams unless the blendmap's resolution is doubled, but Vanilla also doubles the
                 // blendmap, apparently.
-                matrix.preMultTranslate(osg::Vec3f(1.0f / blendmapScale / 4.0f, 1.0f / blendmapScale / 4.0f, 0.f));
+                matrix.preMultTranslate(osg::Vec3f(1.0f / blendmapScale / 4.0f, -1.0f / blendmapScale / 4.0f, 0.f));
 
-                texMat = mTexMatMap.emplace(blendmapScale, new osg::TexMat(matrix)).first;
+                texMat = mTexMatMap.emplace(blendmapScale, SceneUtil::createTexMatUniform(1, matrix)).first;
             }
             return texMat->second;
         }
 
     private:
         std::mutex mMutex;
-        std::map<float, osg::ref_ptr<osg::TexMat>> mTexMatMap;
+        std::map<float, osg::ref_ptr<osg::Uniform>> mTexMatMap;
     };
 
     class LayerTexMat
     {
     public:
-        static const osg::ref_ptr<osg::TexMat>& value(const float layerTileSize)
+        static const osg::ref_ptr<osg::Uniform>& value(const float layerTileSize)
         {
             static LayerTexMat instance;
             return instance.get(layerTileSize);
         }
 
-        const osg::ref_ptr<osg::TexMat>& get(const float layerTileSize)
+        const osg::ref_ptr<osg::Uniform>& get(const float layerTileSize)
         {
             const std::lock_guard<std::mutex> lock(mMutex);
             auto texMat = mTexMatMap.find(layerTileSize);
@@ -70,7 +69,8 @@ namespace
             {
                 texMat = mTexMatMap
                              .insert(std::make_pair(layerTileSize,
-                                 new osg::TexMat(osg::Matrix::scale(osg::Vec3f(layerTileSize, layerTileSize, 1.f)))))
+                                 SceneUtil::createTexMatUniform(
+                                     0, osg::Matrix::scale(osg::Vec3f(layerTileSize, layerTileSize, 1.f)))))
                              .first;
             }
             return texMat->second;
@@ -78,7 +78,7 @@ namespace
 
     private:
         std::mutex mMutex;
-        std::map<float, osg::ref_ptr<osg::TexMat>> mTexMatMap;
+        std::map<float, osg::ref_ptr<osg::Uniform>> mTexMatMap;
     };
 
     class EqualDepth
@@ -154,47 +154,6 @@ namespace
         }
     };
 
-    class TexEnvCombine
-    {
-    public:
-        static const osg::ref_ptr<osg::TexEnvCombine>& value()
-        {
-            static TexEnvCombine instance;
-            return instance.mValue;
-        }
-
-    private:
-        osg::ref_ptr<osg::TexEnvCombine> mValue;
-
-        TexEnvCombine()
-            : mValue(new osg::TexEnvCombine)
-        {
-            mValue->setCombine_RGB(osg::TexEnvCombine::REPLACE);
-            mValue->setSource0_RGB(osg::TexEnvCombine::PREVIOUS);
-        }
-    };
-
-    class DiscardAlphaCombine
-    {
-    public:
-        static const osg::ref_ptr<osg::TexEnvCombine>& value()
-        {
-            static DiscardAlphaCombine instance;
-            return instance.mValue;
-        }
-
-    private:
-        osg::ref_ptr<osg::TexEnvCombine> mValue;
-
-        DiscardAlphaCombine()
-            : mValue(new osg::TexEnvCombine)
-        {
-            mValue->setCombine_Alpha(osg::TexEnvCombine::REPLACE);
-            mValue->setSource0_Alpha(osg::TexEnvCombine::CONSTANT);
-            mValue->setConstantColor(osg::Vec4(0.0, 0.0, 0.0, 1.0));
-        }
-    };
-
     class UniformCollection
     {
     public:
@@ -221,9 +180,9 @@ namespace
 
 namespace Terrain
 {
-    std::vector<osg::ref_ptr<osg::StateSet>> createPasses(bool useShaders, Resource::SceneManager* sceneManager,
+    std::vector<osg::ref_ptr<osg::StateSet>> createPasses(Resource::SceneManager* sceneManager,
         const std::vector<TextureLayer>& layers, const std::vector<osg::ref_ptr<osg::Texture2D>>& blendmaps,
-        int blendmapScale, float layerTileSize, bool esm4terrain)
+        int blendmapScale, float layerTileSize, bool isComposite, bool esm4terrain)
     {
         auto& shaderManager = sceneManager->getShaderManager();
         std::vector<osg::ref_ptr<osg::StateSet>> passes;
@@ -238,8 +197,8 @@ namespace Terrain
             if (!blendmaps.empty())
             {
                 stateset->setMode(GL_BLEND, osg::StateAttribute::ON);
-                if (sceneManager->getSupportsNormalsRT())
-                    stateset->setAttribute(new osg::Disablei(GL_BLEND, 1));
+                // This pass needs normals-buffer blending.
+                stateset->setAttribute(new osg::Enablei(GL_BLEND, 1));
                 stateset->setRenderBinDetails(firstLayer ? 0 : 1, "RenderBin");
                 if (!firstLayer)
                 {
@@ -253,32 +212,34 @@ namespace Terrain
                 }
             }
 
-            if (useShaders)
+            stateset->setTextureAttribute(0, it->mDiffuseMap);
+            stateset->addUniform(UniformCollection::value().mDiffuseMap);
+
+            if (layerTileSize != 1.f)
+                stateset->addUniform(LayerTexMat::value(layerTileSize));
+
+            if (!blendmaps.empty())
             {
-                stateset->setTextureAttributeAndModes(0, it->mDiffuseMap);
+                osg::ref_ptr<osg::Texture2D> blendmap = blendmaps.at(blendmapIndex++);
 
-                if (layerTileSize != 1.f)
-                    stateset->setTextureAttributeAndModes(
-                        0, LayerTexMat::value(layerTileSize), osg::StateAttribute::ON);
-
-                stateset->addUniform(UniformCollection::value().mDiffuseMap);
-
-                if (!blendmaps.empty())
-                {
-                    osg::ref_ptr<osg::Texture2D> blendmap = blendmaps.at(blendmapIndex++);
-
-                    stateset->setTextureAttributeAndModes(1, blendmap.get());
-                    if (!esm4terrain)
-                        stateset->setTextureAttributeAndModes(1, BlendmapTexMat::value(blendmapScale));
-                    stateset->addUniform(UniformCollection::value().mBlendMap);
-                }
-
+                stateset->setTextureAttribute(1, blendmap.get());
+                if (!esm4terrain)
+                    stateset->addUniform(BlendmapTexMat::value(blendmapScale));
+                stateset->addUniform(UniformCollection::value().mBlendMap);
+            }
+            if (isComposite)
+            {
+                stateset->setAttributeAndModes(
+                    shaderManager.getProgram("terrain_composite", { { "blendMap", !blendmaps.empty() ? "1" : "0" } }));
+            }
+            else
+            {
                 bool parallax = it->mNormalMap && it->mParallax;
                 bool reconstructNormalZ = false;
 
                 if (it->mNormalMap)
                 {
-                    stateset->setTextureAttributeAndModes(2, it->mNormalMap);
+                    stateset->setTextureAttribute(2, it->mNormalMap);
                     stateset->addUniform(UniformCollection::value().mNormalMap);
 
                     // Special handling for red-green normal maps (e.g. BC5 or R8G8).
@@ -302,37 +263,11 @@ namespace Terrain
                 defineMap["blendMap"] = (!blendmaps.empty()) ? "1" : "0";
                 defineMap["specularMap"] = it->mSpecular ? "1" : "0";
                 defineMap["parallax"] = parallax ? "1" : "0";
-                defineMap["writeNormals"] = (it == layers.end() - 1) ? "1" : "0";
                 defineMap["reconstructNormalZ"] = reconstructNormalZ ? "1" : "0";
                 Stereo::shaderStereoDefines(defineMap);
 
                 stateset->setAttributeAndModes(shaderManager.getProgram("terrain", defineMap));
                 stateset->addUniform(UniformCollection::value().mColorMode);
-            }
-            else
-            {
-                // Add the actual layer texture
-                osg::ref_ptr<osg::Texture2D> tex = it->mDiffuseMap;
-                stateset->setTextureAttributeAndModes(0, tex.get());
-
-                if (layerTileSize != 1.f)
-                    stateset->setTextureAttributeAndModes(
-                        0, LayerTexMat::value(layerTileSize), osg::StateAttribute::ON);
-
-                stateset->setTextureAttributeAndModes(0, DiscardAlphaCombine::value(), osg::StateAttribute::ON);
-
-                // Multiply by the alpha map
-                if (!blendmaps.empty())
-                {
-                    osg::ref_ptr<osg::Texture2D> blendmap = blendmaps.at(blendmapIndex++);
-
-                    stateset->setTextureAttributeAndModes(1, blendmap.get());
-
-                    // This is to map corner vertices directly to the center of a blendmap texel.
-                    if (!esm4terrain)
-                        stateset->setTextureAttributeAndModes(1, BlendmapTexMat::value(blendmapScale));
-                    stateset->setTextureAttributeAndModes(1, TexEnvCombine::value(), osg::StateAttribute::ON);
-                }
             }
 
             passes.push_back(stateset);

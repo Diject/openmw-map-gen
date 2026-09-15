@@ -10,8 +10,6 @@
 #include <components/detournavigator/collisionshapetype.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include <osg/io_utils>
-
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -41,7 +39,6 @@ namespace Settings
         MyGuiColour,
         GyroscopeAxis,
         NavMeshRenderMode,
-        LightingMethod,
         HrtfMode,
         WindowMode,
         VSyncMode,
@@ -154,12 +151,6 @@ namespace Settings
     }
 
     template <>
-    inline constexpr SettingValueType getSettingValueType<SceneUtil::LightingMethod>()
-    {
-        return SettingValueType::LightingMethod;
-    }
-
-    template <>
     inline constexpr SettingValueType getSettingValueType<HrtfMode>()
     {
         return SettingValueType::HrtfMode;
@@ -221,8 +212,6 @@ namespace Settings
                 return "gyroscope axis";
             case SettingValueType::NavMeshRenderMode:
                 return "navmesh render mode";
-            case SettingValueType::LightingMethod:
-                return "lighting method";
             case SettingValueType::HrtfMode:
                 return "hrtf mode";
             case SettingValueType::WindowMode:
@@ -395,6 +384,19 @@ namespace Settings
                             stream << v;
                         else
                             stream << "," << v;
+                    }
+                    return stream;
+                }
+                else if constexpr (requires { T::num_components; })
+                {
+                    // Vector types have no operator<< of their own. <osg/io_utils>
+                    // supplies one, but pulling a rendering library into the settings
+                    // headers for the sake of one warning message is not worth it.
+                    for (int i = 0; i < T::num_components; ++i)
+                    {
+                        if (i != 0)
+                            stream << ' ';
+                        stream << value.mValue[i];
                     }
                     return stream;
                 }

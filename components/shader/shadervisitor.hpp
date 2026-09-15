@@ -9,6 +9,11 @@ namespace Resource
     class ImageManager;
 }
 
+namespace SceneUtil
+{
+    class Material;
+}
+
 namespace Shader
 {
 
@@ -22,10 +27,6 @@ namespace Shader
             ShaderManager& shaderManager, Resource::ImageManager& imageManager, const std::string& defaultShaderPrefix);
 
         void setProgramTemplate(const osg::Program* programTemplate) { mProgramTemplate = programTemplate; }
-
-        /// By default, only bump mapped objects will have a shader added to them.
-        /// Setting force = true will cause all objects to render using shaders, regardless of having a bump map.
-        void setForceShaders(bool force);
 
         /// Set if we are allowed to modify StateSets encountered in the graph (default true).
         /// @par If set to false, then instead of modifying, the StateSet will be cloned and this new StateSet will be
@@ -43,8 +44,6 @@ namespace Shader
         void setAutoUseSpecularMaps(bool use);
 
         void setSpecularMapPattern(const std::string& pattern);
-
-        void setApplyLightingToEnvMaps(bool apply);
 
         void setConvertAlphaTestToAlphaToCoverage(bool convert);
         void setAdjustCoverageForAlphaTest(bool adjustCoverage);
@@ -64,7 +63,6 @@ namespace Shader
         void popRequirements();
 
     private:
-        bool mForceShaders;
         bool mAllowedToModifyStateSets;
 
         bool mAutoUseNormalMaps;
@@ -73,8 +71,6 @@ namespace Shader
 
         bool mAutoUseSpecularMaps;
         std::string mSpecularMapPattern;
-
-        bool mApplyLightingToEnvMaps;
 
         bool mConvertAlphaTestToAlphaToCoverage;
         bool mAdjustCoverageForAlphaTest;
@@ -93,11 +89,6 @@ namespace Shader
             // <texture stage, texture name>
             std::map<int, std::string> mTextures;
 
-            bool mShaderRequired;
-
-            int mColorMode;
-
-            bool mMaterialOverridden;
             bool mAlphaTestOverridden;
             bool mAlphaBlendOverridden;
 
@@ -125,7 +116,6 @@ namespace Shader
         std::string mDefaultShaderPrefix;
 
         void createProgram(const ShaderRequirements& reqs);
-        void ensureFFP(osg::Node& node);
         bool adjustGeometry(osg::Geometry& sourceGeometry, const ShaderRequirements& reqs);
 
         osg::ref_ptr<const osg::Program> mProgramTemplate;

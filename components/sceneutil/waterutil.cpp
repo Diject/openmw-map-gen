@@ -2,8 +2,9 @@
 
 #include <osg/Depth>
 #include <osg/Geometry>
-#include <osg/Material>
 #include <osg/StateSet>
+
+#include <components/sceneutil/material.hpp>
 
 #include "depth.hpp"
 
@@ -39,9 +40,9 @@ namespace SceneUtil
                 verts->push_back(osg::Vec3f(x2, y2, 0.f));
 
                 float u1 = x * texCoordStep;
-                float v1 = y * texCoordStep;
+                float v1 = textureRepeats - y * texCoordStep;
                 float u2 = u1 + texCoordStep;
-                float v2 = v1 + texCoordStep;
+                float v2 = v1 - texCoordStep;
 
                 texcoords->push_back(osg::Vec2f(u1, v2));
                 texcoords->push_back(osg::Vec2f(u1, v1));
@@ -69,11 +70,11 @@ namespace SceneUtil
     {
         osg::ref_ptr<osg::StateSet> stateset(new osg::StateSet);
 
-        osg::ref_ptr<osg::Material> material(new osg::Material);
-        material->setEmission(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 1.f));
-        material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, alpha));
-        material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, 1.f));
-        material->setColorMode(osg::Material::OFF);
+        osg::ref_ptr<SceneUtil::Material> material(new SceneUtil::Material);
+        material->setEmission(osg::Vec4f(0.f, 0.f, 0.f, 1.f));
+        material->setDiffuse(osg::Vec4f(1.f, 1.f, 1.f, alpha));
+        material->setAmbient(osg::Vec4f(1.f, 1.f, 1.f, 1.f));
+        material->setVertexColorMode(SceneUtil::VertexColorModes::None);
         stateset->setAttributeAndModes(material, osg::StateAttribute::ON);
 
         stateset->setMode(GL_BLEND, osg::StateAttribute::ON);
@@ -83,7 +84,8 @@ namespace SceneUtil
         depth->setWriteMask(false);
         stateset->setAttributeAndModes(depth, osg::StateAttribute::ON);
 
-        stateset->setRenderBinDetails(renderBin, "RenderBin");
+        stateset->addUniform(new osg::Uniform("waterSurface", true));
+        stateset->setRenderBinDetails(renderBin, "DepthSortedBin");
 
         return stateset;
     }

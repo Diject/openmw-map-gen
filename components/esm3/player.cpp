@@ -45,38 +45,65 @@ namespace ESM
                 = esm.getFormatVersion() <= MaxClearModifiersFormatVersion && !mObject.mNpcStats.mIsWerewolf;
             if (esm.hasMoreSubs())
             {
-                for (size_t i = 0; i < std::size(mSaveAttributes); ++i)
+                for (int i = 0; i < ESM::Attribute::Length; ++i)
                 {
                     StatState<float> attribute;
                     attribute.load(esm, intFallback);
                     if (clearModified)
                         attribute.mMod = 0.f;
-                    mSaveAttributes[i] = attribute.mBase + attribute.mMod - attribute.mDamage;
+                    const ESM::RefId id = ESM::Attribute::indexToRefId(i);
+                    mSaveAttributes[id] = attribute.mBase + attribute.mMod - attribute.mDamage;
                     if (mObject.mNpcStats.mIsWerewolf)
-                        mObject.mCreatureStats.mAttributes[i] = attribute;
+                        mObject.mCreatureStats.mAttributes[id] = attribute;
                 }
-                for (size_t i = 0; i < std::size(mSaveSkills); ++i)
+                for (int i = 0; i < ESM::Skill::Length; ++i)
                 {
                     StatState<float> skill;
                     skill.load(esm, intFallback);
                     if (clearModified)
                         skill.mMod = 0.f;
-                    mSaveSkills[i] = skill.mBase + skill.mMod - skill.mDamage;
+                    const ESM::RefId id = ESM::Skill::indexToRefId(i);
+                    mSaveSkills[id] = skill.mBase + skill.mMod - skill.mDamage;
                     if (mObject.mNpcStats.mIsWerewolf)
                     {
-                        constexpr int acrobatics = 20;
-                        if (i == acrobatics)
-                            mSetWerewolfAcrobatics = mObject.mNpcStats.mSkills[i].mBase != skill.mBase;
-                        mObject.mNpcStats.mSkills[i] = skill;
+                        if (id == ESM::Skill::Acrobatics)
+                            mSetWerewolfAcrobatics = mObject.mNpcStats.mSkills[id].mBase != skill.mBase;
+                        mObject.mNpcStats.mSkills[id] = skill;
                     }
                 }
             }
         }
+        else if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            mSetWerewolfAcrobatics = false;
+            float saveAttributes[ESM::Attribute::Length];
+            esm.getHNT(saveAttributes, "WWAT");
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+                mSaveAttributes[ESM::Attribute::indexToRefId(i)] = saveAttributes[i];
+            float saveSkills[ESM::Skill::Length];
+            esm.getHNT(saveSkills, "WWSK");
+            for (int i = 0; i < ESM::Skill::Length; ++i)
+                mSaveSkills[ESM::Skill::indexToRefId(i)] = saveSkills[i];
+        }
         else
         {
             mSetWerewolfAcrobatics = false;
-            esm.getHNT(mSaveAttributes, "WWAT");
-            esm.getHNT(mSaveSkills, "WWSK");
+            while (esm.isNextSub("WWAT"))
+            {
+                esm.getSubHeader();
+                float value;
+                esm.getT(value);
+                ESM::RefId attribute = esm.getRefId(esm.getSubSize() - sizeof(value));
+                mSaveAttributes[attribute] = value;
+            }
+            while (esm.isNextSub("WWSK"))
+            {
+                esm.getSubHeader();
+                float value;
+                esm.getT(value);
+                ESM::RefId skill = esm.getRefId(esm.getSubSize() - sizeof(value));
+                mSaveSkills[skill] = value;
+            }
         }
     }
 
@@ -104,9 +131,47 @@ namespace ESM
             esm.writeHNRefId("BOUN", bound);
             esm.writeHNRefId("PREV", prev);
         }
-
-        esm.writeHNT("WWAT", mSaveAttributes);
-        esm.writeHNT("WWSK", mSaveSkills);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            // This branch is only used in tests. It probably shouldn't exist.
+            float saveAttributes[ESM::Attribute::Length];
+            for (int i = 0; i < ESM::Attribute::Length; ++i)
+            {
+                const auto it = mSaveAttributes.find(ESM::Attribute::indexToRefId(i));
+                if (it != mSaveAttributes.end())
+                    saveAttributes[i] = it->second;
+                else
+                    saveAttributes[i] = 0.f;
+            }
+            float saveSkills[ESM::Skill::Length];
+            for (int i = 0; i < ESM::Skill::Length; ++i)
+            {
+                const auto it = mSaveSkills.find(ESM::Skill::indexToRefId(i));
+                if (it != mSaveSkills.end())
+                    saveSkills[i] = it->second;
+                else
+                    saveSkills[i] = 0.f;
+            }
+            esm.writeHNT("WWAT", saveAttributes);
+            esm.writeHNT("WWSK", saveSkills);
+        }
+        else
+        {
+            for (const auto& [id, value] : mSaveAttributes)
+            {
+                esm.startSubRecord("WWAT");
+                esm.writeT(value);
+                esm.writeHRefId(id);
+                esm.endRecord("WWAT");
+            }
+            for (const auto& [id, value] : mSaveSkills)
+            {
+                esm.startSubRecord("WWSK");
+                esm.writeT(value);
+                esm.writeHRefId(id);
+                esm.endRecord("WWSK");
+            }
+        }
     }
 
 }

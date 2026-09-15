@@ -1,12 +1,10 @@
 #version 120
 
-#if @useUBO
-    #extension GL_ARB_uniform_buffer_object : require
-#endif
-
 #if @useGPUShader4
     #extension GL_EXT_gpu_shader4: require
 #endif
+
+#include "lib/core/fragment.h.glsl"
 
 #define GROUNDCOVER
 
@@ -27,26 +25,31 @@ varying vec2 normalMapUV;
 varying float euclideanDepth;
 varying float linearDepth;
 uniform vec2 screenRes;
+uniform float near;
 uniform float far;
 uniform float alphaRef;
 
 #if PER_PIXEL_LIGHTING
-varying vec3 passViewPos;
+#include "lib/light/clamp.glsl"
 #else
+centroid varying vec3 shadedLighting;
 centroid varying vec3 passLighting;
-centroid varying vec3 shadowDiffuseLighting;
 #endif
 
 varying vec3 passNormal;
+varying vec3 passViewPos;
 
 #include "shadows_fragment.glsl"
-#include "lib/light/lighting.glsl"
 #include "lib/material/alpha.glsl"
 #include "fog.glsl"
 #include "compatibility/normals.glsl"
 
+centroid varying vec4 passColor;
+
 void main()
 {
+    Material material = getMaterial();
+
 #if @diffuseMap
     gl_FragData[0] = texture2D(diffuseMap, diffuseMapUV);
 #else
@@ -73,17 +76,16 @@ void main()
 
     vec3 lighting;
 #if !PER_PIXEL_LIGHTING
-    lighting = passLighting + shadowDiffuseLighting * shadowing;
+    lighting = mix(shadedLighting, passLighting, shadowing);
 #else
     vec3 diffuseLight, ambientLight, specularLight;
-    doLighting(passViewPos, viewNormal, gl_FrontMaterial.shininess, shadowing, diffuseLight, ambientLight, specularLight);
+    doLighting(gl_FragCoord.xy, passViewPos, viewNormal, material.shininess, shadowing, diffuseLight, ambientLight, specularLight);
     lighting = diffuseLight + ambientLight;
+    clampLighting(lighting);
 #endif
 
-    clampLightingResult(lighting);
-
     gl_FragData[0].xyz *= lighting;
-    gl_FragData[0] = applyFogAtDist(gl_FragData[0], euclideanDepth, linearDepth, far);
+    gl_FragData[0] = applyFogAtDist(gl_FragData[0], passViewPos, euclideanDepth, linearDepth, near, far);
 
 #if !@disableNormals
     gl_FragData[1].xyz = viewNormal * 0.5 + 0.5;

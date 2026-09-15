@@ -28,8 +28,7 @@ namespace SDLUtil
         , mMouseRelative(false)
         , mFirstMouseMove(true)
         , mMouseZ(0)
-        , mMouseX(0)
-        , mMouseY(0)
+        , mPendingWheelY(0.0)
         , mWindowHasFocus(true)
         , mMouseInWindow(true)
     {
@@ -418,14 +417,12 @@ namespace SDLUtil
     MouseMotionEvent InputWrapper::_packageMouseMotion(const SDL_Event& evt)
     {
         MouseMotionEvent packEvt = {};
-        packEvt.x = mMouseX * mScaleX;
-        packEvt.y = mMouseY * mScaleY;
         packEvt.z = mMouseZ;
 
         if (evt.type == SDL_MOUSEMOTION)
         {
-            packEvt.x = mMouseX = evt.motion.x * mScaleX;
-            packEvt.y = mMouseY = evt.motion.y * mScaleY;
+            packEvt.x = evt.motion.x * mScaleX;
+            packEvt.y = evt.motion.y * mScaleY;
             packEvt.xrel = evt.motion.xrel * mScaleX;
             packEvt.yrel = evt.motion.yrel * mScaleY;
             packEvt.type = SDL_MOUSEMOTION;
@@ -439,9 +436,19 @@ namespace SDLUtil
         }
         else if (evt.type == SDL_MOUSEWHEEL)
         {
-            mMouseZ += packEvt.zrel = (evt.wheel.y * 120);
+            double preciseY = evt.wheel.preciseY;
+
+            mPendingWheelY += preciseY * 120.0;
+            const int zrel = static_cast<int>(mPendingWheelY);
+            mPendingWheelY -= zrel;
+
+            mMouseZ += zrel;
+            packEvt.zrel = zrel;
             packEvt.z = mMouseZ;
             packEvt.type = SDL_MOUSEWHEEL;
+
+            packEvt.x = evt.wheel.mouseX * mScaleX;
+            packEvt.y = evt.wheel.mouseY * mScaleY;
         }
         else
         {

@@ -153,14 +153,11 @@ namespace
         int i = 0;
         for (const ESM::IndexedENAMstruct& effect : effects.mList)
         {
-            std::cout << "  Effect[" << i << "]: " << magicEffectLabel(effect.mData.mEffectID) << " ("
-                      << effect.mData.mEffectID << ")" << std::endl;
-            if (effect.mData.mSkill != -1)
-                std::cout << "    Skill: " << skillLabel(effect.mData.mSkill) << " (" << (int)effect.mData.mSkill << ")"
-                          << std::endl;
-            if (effect.mData.mAttribute != -1)
-                std::cout << "    Attribute: " << attributeLabel(effect.mData.mAttribute) << " ("
-                          << (int)effect.mData.mAttribute << ")" << std::endl;
+            std::cout << "  Effect[" << i << "]: " << effect.mData.mEffectID << std::endl;
+            if (!effect.mData.mSkill.empty())
+                std::cout << "    Skill: " << effect.mData.mSkill << std::endl;
+            if (!effect.mData.mAttribute.empty())
+                std::cout << "    Attribute: " << effect.mData.mAttribute << std::endl;
             std::cout << "    Range: " << rangeTypeLabel(effect.mData.mRange) << " (" << effect.mData.mRange << ")"
                       << std::endl;
             // Area is always zero if range type is "Self"
@@ -176,9 +173,9 @@ namespace
     {
         for (const ESM::Transport::Dest& dest : transport)
         {
-            std::cout << std::format("  Destination Position: ({:12.3f},{:12.3f},{:12.3f})\n", dest.mPos.pos[0],
+            std::cout << std::format("  Destination Position: ({:12.3f}, {:12.3f}, {:12.3f})\n", dest.mPos.pos[0],
                 dest.mPos.pos[1], dest.mPos.pos[2]);
-            std::cout << std::format("  Destination Rotation: ({:9.6f},{:9.6f},{:9.6f})\n",
+            std::cout << std::format("  Destination Rotation: ({:12.3f}, {:12.3f}, {:12.3f})\n",
                 osg::RadiansToDegrees(dest.mPos.rot[0]), osg::RadiansToDegrees(dest.mPos.rot[1]),
                 osg::RadiansToDegrees(dest.mPos.rot[2]));
             if (!dest.mCellName.empty())
@@ -434,7 +431,7 @@ namespace EsmTool
     void Record<ESM::Activator>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Deleted: " << mIsDeleted << std::endl;
@@ -444,8 +441,8 @@ namespace EsmTool
     void Record<ESM::Potion>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
@@ -459,8 +456,8 @@ namespace EsmTool
     void Record<ESM::Armor>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         if (!mData.mEnchant.empty())
@@ -486,8 +483,8 @@ namespace EsmTool
     void Record<ESM::Apparatus>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Type: " << apparatusTypeLabel(mData.mData.mType) << " (" << mData.mData.mType << ")"
@@ -502,7 +499,7 @@ namespace EsmTool
     void Record<ESM::BodyPart>::print()
     {
         std::cout << "  Race: " << mData.mRace << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         std::cout << "  Type: " << meshTypeLabel(mData.mData.mType) << " (" << (int)mData.mData.mType << ")"
                   << std::endl;
         std::cout << "  Flags: " << bodyPartFlags(mData.mData.mFlags) << std::endl;
@@ -516,8 +513,8 @@ namespace EsmTool
     void Record<ESM::Book>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         if (!mData.mEnchant.empty())
@@ -545,7 +542,7 @@ namespace EsmTool
     void Record<ESM::BirthSign>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Texture: " << mData.mTexture << std::endl;
+        std::cout << "  Texture: " << mData.mTexture.getOriginal() << std::endl;
         std::cout << "  Description: " << mData.mDescription << std::endl;
         for (const auto& power : mData.mPowers.mList)
             std::cout << "  Power: " << power << std::endl;
@@ -595,14 +592,13 @@ namespace EsmTool
         std::cout << "  Playable: " << mData.mData.mIsPlayable << std::endl;
         std::cout << std::format("  AI Services: 0x{:08X}\n", mData.mData.mServices);
         for (size_t i = 0; i < mData.mData.mAttribute.size(); ++i)
-            std::cout << "  Attribute" << (i + 1) << ": " << attributeLabel(mData.mData.mAttribute[i]) << " ("
-                      << mData.mData.mAttribute[i] << ")" << std::endl;
+            std::cout << "  Attribute" << (i + 1) << ": " << mData.mData.mAttribute[i] << std::endl;
         std::cout << "  Specialization: " << specializationLabel(mData.mData.mSpecialization) << " ("
                   << mData.mData.mSpecialization << ")" << std::endl;
-        for (const auto& skills : mData.mData.mSkills)
-            std::cout << "  Minor Skill: " << skillLabel(skills[0]) << " (" << skills[0] << ")" << std::endl;
-        for (const auto& skills : mData.mData.mSkills)
-            std::cout << "  Major Skill: " << skillLabel(skills[1]) << " (" << skills[1] << ")" << std::endl;
+        for (const ESM::RefId& skill : mData.mData.mMinorSkills)
+            std::cout << "  Minor Skill: " << skill << std::endl;
+        for (const ESM::RefId& skill : mData.mData.mMajorSkills)
+            std::cout << "  Major Skill: " << skill << std::endl;
         std::cout << "  Deleted: " << mIsDeleted << std::endl;
     }
 
@@ -610,8 +606,8 @@ namespace EsmTool
     void Record<ESM::Clothing>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         if (!mData.mEnchant.empty())
@@ -635,7 +631,7 @@ namespace EsmTool
     void Record<ESM::Container>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Flags: " << containerFlags(mData.mFlags) << std::endl;
@@ -649,7 +645,7 @@ namespace EsmTool
     void Record<ESM::Creature>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Flags: " << creatureFlags((int)mData.mFlags) << std::endl;
@@ -662,9 +658,8 @@ namespace EsmTool
         std::cout << "  Level: " << mData.mData.mLevel << std::endl;
 
         std::cout << "  Attributes:" << std::endl;
-        for (size_t i = 0; i < mData.mData.mAttributes.size(); ++i)
-            std::cout << "    " << ESM::Attribute::indexToRefId(static_cast<int>(i)) << ": "
-                      << mData.mData.mAttributes[i] << std::endl;
+        for (const auto& [attribute, value] : mData.mData.mAttributes)
+            std::cout << "    " << attribute << ": " << value << std::endl;
 
         std::cout << "  Health: " << mData.mData.mHealth << std::endl;
         std::cout << "  Magicka: " << mData.mData.mMana << std::endl;
@@ -715,7 +710,7 @@ namespace EsmTool
     void Record<ESM::Door>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  OpenSound: " << mData.mOpenSound << std::endl;
@@ -738,13 +733,12 @@ namespace EsmTool
     void Record<ESM::Faction>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Hidden: " << mData.mData.mIsHidden << std::endl;
+        std::cout << "  Flags: " << factionFlags(mData.mData.mFlags) << std::endl;
         for (size_t i = 0; i < mData.mData.mAttribute.size(); ++i)
-            std::cout << "  Attribute" << (i + 1) << ": " << attributeLabel(mData.mData.mAttribute[i]) << " ("
-                      << mData.mData.mAttribute[i] << ")" << std::endl;
-        for (int skill : mData.mData.mSkills)
-            if (skill != -1)
-                std::cout << "  Skill: " << skillLabel(skill) << " (" << skill << ")" << std::endl;
+            std::cout << "  Attribute" << (i + 1) << ": " << mData.mData.mAttribute[i] << std::endl;
+        for (const ESM::RefId& skill : mData.mData.mSkills)
+            if (!skill.empty())
+                std::cout << "  Skill: " << skill << std::endl;
         for (size_t i = 0; i != mData.mData.mRankData.size(); i++)
             if (!mData.mRanks[i].empty())
             {
@@ -835,23 +829,21 @@ namespace EsmTool
     void Record<ESM::Ingredient>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
         std::cout << "  Value: " << mData.mData.mValue << std::endl;
         for (int i = 0; i != 4; i++)
         {
-            // A value of -1 means no effect
-            if (mData.mData.mEffectID[i] == -1)
+            // A value of EmptyRefId means no effect
+            if (mData.mData.mEffectID[i].empty())
                 continue;
-            std::cout << "  Effect: " << magicEffectLabel(mData.mData.mEffectID[i]) << " (" << mData.mData.mEffectID[i]
-                      << ")" << std::endl;
-            std::cout << "  Skill: " << skillLabel(mData.mData.mSkills[i]) << " (" << mData.mData.mSkills[i] << ")"
-                      << std::endl;
-            std::cout << "  Attribute: " << attributeLabel(mData.mData.mAttributes[i]) << " ("
-                      << mData.mData.mAttributes[i] << ")" << std::endl;
+
+            std::cout << "  Effect: " << mData.mData.mEffectID[i] << std::endl;
+            std::cout << "  Skill: " << mData.mData.mSkills[i] << std::endl;
+            std::cout << "  Attribute: " << mData.mData.mAttributes[i] << std::endl;
         }
         std::cout << "  Deleted: " << mIsDeleted << std::endl;
     }
@@ -901,9 +893,9 @@ namespace EsmTool
         if (!mData.mName.empty())
             std::cout << "  Name: " << mData.mName << std::endl;
         if (!mData.mModel.empty())
-            std::cout << "  Model: " << mData.mModel << std::endl;
+            std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         if (!mData.mIcon.empty())
-            std::cout << "  Icon: " << mData.mIcon << std::endl;
+            std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Flags: " << lightFlags(mData.mData.mFlags) << std::endl;
@@ -920,8 +912,8 @@ namespace EsmTool
     void Record<ESM::Lockpick>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
@@ -935,8 +927,8 @@ namespace EsmTool
     void Record<ESM::Probe>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
@@ -950,8 +942,8 @@ namespace EsmTool
     void Record<ESM::Repair>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
@@ -966,18 +958,18 @@ namespace EsmTool
     {
         std::cout << "  Id: " << mData.mId << std::endl;
         std::cout << "  Index: " << mData.mIndex << std::endl;
-        std::cout << "  Texture: " << mData.mTexture << std::endl;
+        std::cout << "  Texture: " << mData.mTexture.getOriginal() << std::endl;
         std::cout << "  Deleted: " << mIsDeleted << std::endl;
     }
 
     template <>
     void Record<ESM::MagicEffect>::print()
     {
-        std::cout << "  Index: " << magicEffectLabel(mData.mIndex) << " (" << mData.mIndex << ")" << std::endl;
+        std::cout << "  Index: " << mData.mId << std::endl;
         std::cout << "  Description: " << mData.mDescription << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         std::cout << "  Flags: " << magicEffectFlags(mData.mData.mFlags) << std::endl;
-        std::cout << "  Particle Texture: " << mData.mParticle << std::endl;
+        std::cout << "  Particle Texture: " << mData.mParticle.getOriginal() << std::endl;
         if (!mData.mCasting.empty())
             std::cout << "  Casting Static: " << mData.mCasting << std::endl;
         if (!mData.mCastSound.empty())
@@ -1009,8 +1001,8 @@ namespace EsmTool
     void Record<ESM::Miscellaneous>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
-        std::cout << "  Icon: " << mData.mIcon << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
+        std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
@@ -1023,7 +1015,7 @@ namespace EsmTool
     void Record<ESM::NPC>::print()
     {
         std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Animation: " << mData.mModel << std::endl;
+        std::cout << "  Animation: " << mData.mModel.getOriginal() << std::endl;
         std::cout << "  Hair Model: " << mData.mHair << std::endl;
         std::cout << "  Head Model: " << mData.mHead << std::endl;
         std::cout << "  Race: " << mData.mRace << std::endl;
@@ -1052,14 +1044,12 @@ namespace EsmTool
             std::cout << "  Rank: " << (int)mData.mNpdt.mRank << std::endl;
 
             std::cout << "  Attributes:" << std::endl;
-            for (size_t i = 0; i != mData.mNpdt.mAttributes.size(); i++)
-                std::cout << "    " << attributeLabel(static_cast<int>(i)) << ": " << int(mData.mNpdt.mAttributes[i])
-                          << std::endl;
+            for (const auto& [attribute, value] : mData.mNpdt.mAttributes)
+                std::cout << "    " << attribute << ": " << int(value) << std::endl;
 
             std::cout << "  Skills:" << std::endl;
-            for (size_t i = 0; i != mData.mNpdt.mSkills.size(); i++)
-                std::cout << "    " << skillLabel(static_cast<int>(i)) << ": " << int(mData.mNpdt.mSkills[i])
-                          << std::endl;
+            for (const auto& [skill, value] : mData.mNpdt.mSkills)
+                std::cout << "    " << skill << ": " << int(value) << std::endl;
 
             std::cout << "  Health: " << mData.mNpdt.mHealth << std::endl;
             std::cout << "  Magicka: " << mData.mNpdt.mMana << std::endl;
@@ -1129,28 +1119,21 @@ namespace EsmTool
         std::cout << "  Flags: " << raceFlags(mData.mData.mFlags) << std::endl;
 
         std::cout << "  Male:" << std::endl;
-        for (int j = 0; j < ESM::Attribute::Length; ++j)
-        {
-            ESM::RefId id = ESM::Attribute::indexToRefId(j);
-            std::cout << "    " << id << ": " << mData.mData.getAttribute(id, true) << std::endl;
-        }
+        for (const auto& [id, values] : mData.mData.mAttributeValues)
+            std::cout << "    " << id << ": " << values.mMale << std::endl;
         std::cout << "    Height: " << mData.mData.mMaleHeight << std::endl;
         std::cout << "    Weight: " << mData.mData.mMaleWeight << std::endl;
 
         std::cout << "  Female:" << std::endl;
-        for (int j = 0; j < ESM::Attribute::Length; ++j)
-        {
-            ESM::RefId id = ESM::Attribute::indexToRefId(j);
-            std::cout << "    " << id << ": " << mData.mData.getAttribute(id, false) << std::endl;
-        }
+        for (const auto& [id, values] : mData.mData.mAttributeValues)
+            std::cout << "    " << id << ": " << values.mFemale << std::endl;
         std::cout << "    Height: " << mData.mData.mFemaleHeight << std::endl;
         std::cout << "    Weight: " << mData.mData.mFemaleWeight << std::endl;
 
         for (const auto& bonus : mData.mData.mBonus)
             // Not all races have 7 skills.
-            if (bonus.mSkill != -1)
-                std::cout << "  Skill: " << skillLabel(bonus.mSkill) << " (" << bonus.mSkill << ") = " << bonus.mBonus
-                          << std::endl;
+            if (!bonus.mSkill.empty())
+                std::cout << "  Skill: " << bonus.mSkill << " = " << bonus.mBonus << std::endl;
 
         for (const auto& power : mData.mPowers.mList)
             std::cout << "  Power: " << power << std::endl;
@@ -1164,11 +1147,8 @@ namespace EsmTool
         std::cout << "  Name: " << mData.mName << std::endl;
 
         std::cout << "  Weather:" << std::endl;
-        std::array<std::string_view, 10> weathers
-            = { "Clear", "Cloudy", "Fog", "Overcast", "Rain", "Thunder", "Ash", "Blight", "Snow", "Blizzard" };
-        for (size_t i = 0; i < weathers.size(); ++i)
-            std::cout << "    " << weathers[i] << ": " << static_cast<unsigned>(mData.mData.mProbabilities[i])
-                      << std::endl;
+        for (const auto& [id, chance] : mData.mData.mProbabilities)
+            std::cout << "    " << id << ": " << static_cast<unsigned>(chance) << std::endl;
         std::cout << "  Map Color: " << mData.mMapColor << std::endl;
         if (!mData.mSleepList.empty())
             std::cout << "  Sleep List: " << mData.mSleepList << std::endl;
@@ -1213,11 +1193,9 @@ namespace EsmTool
     template <>
     void Record<ESM::Skill>::print()
     {
-        int index = ESM::Skill::refIdToIndex(mData.mId);
-        std::cout << "  ID: " << skillLabel(index) << " (" << index << ")" << std::endl;
+        std::cout << "  ID: " << mData.mId << std::endl;
         std::cout << "  Description: " << mData.mDescription << std::endl;
-        std::cout << "  Governing Attribute: " << attributeLabel(mData.mData.mAttribute) << " ("
-                  << mData.mData.mAttribute << ")" << std::endl;
+        std::cout << "  Governing Attribute: " << mData.mData.mAttribute << std::endl;
         std::cout << "  Specialization: " << specializationLabel(mData.mData.mSpecialization) << " ("
                   << mData.mData.mSpecialization << ")" << std::endl;
         for (int i = 0; i != 4; i++)
@@ -1266,7 +1244,7 @@ namespace EsmTool
     template <>
     void Record<ESM::Static>::print()
     {
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
     }
 
     template <>
@@ -1275,15 +1253,16 @@ namespace EsmTool
         // No names on VFX bolts
         if (!mData.mName.empty())
             std::cout << "  Name: " << mData.mName << std::endl;
-        std::cout << "  Model: " << mData.mModel << std::endl;
+        std::cout << "  Model: " << mData.mModel.getOriginal() << std::endl;
         // No icons on VFX bolts or magic bolts
         if (!mData.mIcon.empty())
-            std::cout << "  Icon: " << mData.mIcon << std::endl;
+            std::cout << "  Icon: " << mData.mIcon.getOriginal() << std::endl;
         if (!mData.mScript.empty())
             std::cout << "  Script: " << mData.mScript << std::endl;
         if (!mData.mEnchant.empty())
             std::cout << "  Enchantment: " << mData.mEnchant << std::endl;
-        std::cout << "  Type: " << weaponTypeLabel(mData.mData.mType) << " (" << mData.mData.mType << ")" << std::endl;
+        const int weaponType = ESM::Weapon::refIdToIndex(mData.mData.mType);
+        std::cout << "  Type: " << weaponTypeLabel(weaponType) << " (" << weaponType << ")" << std::endl;
         std::cout << "  Flags: " << weaponFlags(mData.mData.mFlags) << std::endl;
         std::cout << "  Weight: " << mData.mData.mWeight << std::endl;
         std::cout << "  Value: " << mData.mData.mValue << std::endl;

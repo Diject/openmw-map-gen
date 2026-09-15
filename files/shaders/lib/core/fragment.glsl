@@ -3,27 +3,12 @@
 #include "lib/core/fragment.h.glsl"
 
 uniform sampler2D reflectionMap;
+uniform Material material;
 
 vec4 sampleReflectionMap(vec2 uv)
 {
     return texture2D(reflectionMap, uv);
 }
-
-#if @waterRefraction
-uniform sampler2D refractionMap;
-uniform sampler2D refractionDepthMap;
-
-vec4 sampleRefractionMap(vec2 uv)
-{
-    return texture2D(refractionMap, uv);
-}
-
-float sampleRefractionDepthMap(vec2 uv)
-{
-    return texture2D(refractionDepthMap, uv).x;
-}
-
-#endif
 
 uniform sampler2D lastShader;
 
@@ -42,8 +27,19 @@ vec3 sampleSkyColor(vec2 uv)
 #endif
 
 uniform sampler2D opaqueDepthTex;
+uniform sampler2D opaqueColorTex;
 
 vec4 sampleOpaqueDepthTex(vec2 uv)
 {
     return texture2D(opaqueDepthTex, uv);
+}
+
+vec4 sampleOpaqueColorTex(vec2 uv)
+{
+    return texture2D(opaqueColorTex, uv);
+}
+
+Material getMaterial()
+{
+    return material;
 }

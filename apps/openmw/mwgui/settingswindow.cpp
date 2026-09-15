@@ -62,26 +62,6 @@ namespace
         return "#{OMWEngine:TextureFilteringOther}";
     }
 
-    MyGUI::UString lightingMethodToStr(SceneUtil::LightingMethod method)
-    {
-        std::string_view result;
-        switch (method)
-        {
-            case SceneUtil::LightingMethod::FFP:
-                result = "#{OMWEngine:LightingMethodLegacy}";
-                break;
-            case SceneUtil::LightingMethod::PerObjectUniform:
-                result = "#{OMWEngine:LightingMethodShadersCompatibility}";
-                break;
-            case SceneUtil::LightingMethod::SingleUBO:
-            default:
-                result = "#{OMWEngine:LightingMethodShaders}";
-                break;
-        }
-
-        return MyGUI::LanguageManager::getInstance().replaceTags(MyGUI::UString(result));
-    }
-
     bool sortResolutions(std::pair<int, int> left, std::pair<int, int> right)
     {
         if (left.first == right.first)
@@ -135,6 +115,39 @@ namespace
             box->setIndexSelected((maxLights / increment) - 1);
         else
             box->setIndexSelected(MyGUI::ITEM_NONE);
+    }
+
+    void updateAnisotropyComboBox(MyGUI::ComboBox* box)
+    {
+        const int anisotropy = Settings::general().mAnisotropy;
+        if (anisotropy <= 1)
+            box->setIndexSelected(0);
+        else if (anisotropy <= 2)
+            box->setIndexSelected(1);
+        else if (anisotropy <= 4)
+            box->setIndexSelected(2);
+        else if (anisotropy <= 8)
+            box->setIndexSelected(3);
+        else
+            box->setIndexSelected(4);
+    }
+
+    void updateShadowMapResolutionComboBox(MyGUI::ComboBox* box)
+    {
+        const int resolution = Settings::shadows().mShadowMapResolution;
+        if (resolution == 512)
+            box->setIndexSelected(0);
+        else if (resolution == 1024)
+            box->setIndexSelected(1);
+        else if (resolution == 2048)
+            box->setIndexSelected(2);
+        else if (resolution == 4096)
+            box->setIndexSelected(3);
+        else
+        {
+            box->addItem(std::to_string(resolution), resolution);
+            box->setIndexSelected(4);
+        }
     }
 
     void updateSliderLabel(MyGUI::ScrollBar* scroller, MyGUI::TextBox* textBox,
@@ -270,13 +283,12 @@ namespace MWGui
         getWidget(mVSyncModeList, "VSyncModeList");
         getWidget(mWindowBorderButton, "WindowBorderButton");
         getWidget(mTextureFilteringButton, "TextureFilteringButton");
+        getWidget(mAnisotropy, "Anisotropy");
         getWidget(mControlsBox, "ControlsBox");
         getWidget(mResetControlsButton, "ResetControlsButton");
         getWidget(mKeyboardSwitch, "KeyboardButton");
         getWidget(mControllerSwitch, "ControllerButton");
         getWidget(mWaterRefractionButton, "WaterRefractionButton");
-        getWidget(mSunlightScatteringButton, "SunlightScatteringButton");
-        getWidget(mWobblyShoresButton, "WobblyShoresButton");
         getWidget(mWaterTextureSize, "WaterTextureSize");
         getWidget(mWaterReflectionDetail, "WaterReflectionDetail");
         getWidget(mWaterRainRippleDetail, "WaterRainRippleDetail");
@@ -284,7 +296,7 @@ namespace MWGui
         getWidget(mSecondaryLanguage, "SecondaryLanguage");
         getWidget(mGmstOverridesL10n, "GmstOverridesL10nButton");
         getWidget(mWindowModeHint, "WindowModeHint");
-        getWidget(mLightingMethodButton, "LightingMethodButton");
+        getWidget(mClusteredLightingButton, "ClusteredLightingButton");
         getWidget(mLightsResetButton, "LightsResetButton");
         getWidget(mMaxLights, "MaxLights");
         getWidget(mScriptFilter, "ScriptFilter");
@@ -293,6 +305,14 @@ namespace MWGui
         getWidget(mScriptView, "ScriptView");
         getWidget(mScriptAdapter, "ScriptAdapter");
         getWidget(mScriptDisabled, "ScriptDisabled");
+        getWidget(mClassicFalloffWidget, "ClassicFalloffWidget");
+        getWidget(mMinimumBrightnessText, "MinimumBrightnessText");
+        getWidget(mMinimumBrightnessScroll, "MinimumBrightnessScroll");
+        getWidget(mActorShadowsButton, "ActorShadowsButton");
+        getWidget(mPlayerShadowsButton, "PlayerShadowsButton");
+        getWidget(mTerrainShadowsButton, "TerrainShadowsButton");
+        getWidget(mObjectShadowsButton, "ObjectShadowsButton");
+        getWidget(mShadowMapResolution, "ShadowMapResolution");
 
 #ifndef WIN32
         // hide gamma controls since it currently does not work under Linux
@@ -315,10 +335,9 @@ namespace MWGui
         mOkButton->eventMouseButtonClick += MyGUI::newDelegate(this, &SettingsWindow::onOkButtonClicked);
         mTextureFilteringButton->eventComboChangePosition
             += MyGUI::newDelegate(this, &SettingsWindow::onTextureFilteringChanged);
+        mAnisotropy->eventComboChangePosition += MyGUI::newDelegate(this, &SettingsWindow::onAnisotropyChanged);
         mResolutionList->eventListChangePosition += MyGUI::newDelegate(this, &SettingsWindow::onResolutionSelected);
 
-        mWaterRefractionButton->eventMouseButtonClick
-            += MyGUI::newDelegate(this, &SettingsWindow::onRefractionButtonClicked);
         mWaterTextureSize->eventComboChangePosition
             += MyGUI::newDelegate(this, &SettingsWindow::onWaterTextureSizeChanged);
         mWaterReflectionDetail->eventComboChangePosition
@@ -326,11 +345,19 @@ namespace MWGui
         mWaterRainRippleDetail->eventComboChangePosition
             += MyGUI::newDelegate(this, &SettingsWindow::onWaterRainRippleDetailChanged);
 
-        mLightingMethodButton->eventComboChangePosition
-            += MyGUI::newDelegate(this, &SettingsWindow::onLightingMethodButtonChanged);
         mLightsResetButton->eventMouseButtonClick
             += MyGUI::newDelegate(this, &SettingsWindow::onLightsResetButtonClicked);
         mMaxLights->eventComboChangePosition += MyGUI::newDelegate(this, &SettingsWindow::onMaxLightsChanged);
+
+        mActorShadowsButton->eventMouseButtonClick += MyGUI::newDelegate(this, &SettingsWindow::onShadowsButtonClicked);
+        mPlayerShadowsButton->eventMouseButtonClick
+            += MyGUI::newDelegate(this, &SettingsWindow::onShadowsButtonClicked);
+        mTerrainShadowsButton->eventMouseButtonClick
+            += MyGUI::newDelegate(this, &SettingsWindow::onShadowsButtonClicked);
+        mObjectShadowsButton->eventMouseButtonClick
+            += MyGUI::newDelegate(this, &SettingsWindow::onShadowsButtonClicked);
+        mShadowMapResolution->eventComboChangePosition
+            += MyGUI::newDelegate(this, &SettingsWindow::onShadowMapResolutionChanged);
 
         mWindowModeList->eventComboChangePosition += MyGUI::newDelegate(this, &SettingsWindow::onWindowModeChanged);
         mVSyncModeList->eventComboChangePosition += MyGUI::newDelegate(this, &SettingsWindow::onVSyncModeChanged);
@@ -375,6 +402,7 @@ namespace MWGui
 
         mTextureFilteringButton->setCaptionWithReplacing(
             textureFilteringToStr(Settings::general().mTextureMipmap, Settings::general().mTextureMinFilter));
+        updateAnisotropyComboBox(mAnisotropy);
 
         int waterTextureSize = Settings::water().mRttSize;
         if (waterTextureSize >= 512)
@@ -390,11 +418,9 @@ namespace MWGui
         const int waterRainRippleDetail = Settings::water().mRainRippleDetail;
         mWaterRainRippleDetail->setIndexSelected(waterRainRippleDetail);
 
-        const bool waterRefraction = Settings::water().mRefraction;
-        mSunlightScatteringButton->setEnabled(waterRefraction);
-        mWobblyShoresButton->setEnabled(waterRefraction);
-
         updateMaxLightsComboBox(mMaxLights);
+
+        updateShadowMapResolutionComboBox(mShadowMapResolution);
 
         const Settings::WindowMode windowMode = Settings::video().mWindowMode;
         mWindowBorderButton->setEnabled(
@@ -524,14 +550,6 @@ namespace MWGui
         }
     }
 
-    void SettingsWindow::onRefractionButtonClicked(MyGUI::Widget* /*sender*/)
-    {
-        const bool refractionEnabled = Settings::water().mRefraction;
-
-        mSunlightScatteringButton->setEnabled(refractionEnabled);
-        mWobblyShoresButton->setEnabled(refractionEnabled);
-    }
-
     void SettingsWindow::onWaterTextureSizeChanged(MyGUI::ComboBox* /*sender*/, size_t pos)
     {
         int size = 0;
@@ -554,21 +572,6 @@ namespace MWGui
     void SettingsWindow::onWaterRainRippleDetailChanged(MyGUI::ComboBox* /*sender*/, size_t pos)
     {
         Settings::water().mRainRippleDetail.set(static_cast<int>(pos));
-        apply();
-    }
-
-    void SettingsWindow::onLightingMethodButtonChanged(MyGUI::ComboBox* sender, size_t pos)
-    {
-        if (pos == MyGUI::ITEM_NONE)
-            return;
-
-        sender->setCaptionWithReplacing(sender->getItemNameAt(sender->getIndexSelected()));
-
-        MWBase::Environment::get().getWindowManager()->interactiveMessageBox(
-            "#{OMWEngine:ChangeRequiresRestart}", { "#{Interface:OK}" }, true);
-
-        Settings::shaders().mLightingMethod.set(
-            Settings::parseLightingMethod(*sender->getItemDataAt<std::string>(pos)));
         apply();
     }
 
@@ -654,17 +657,15 @@ namespace MWGui
 
         Settings::shaders().mForcePerPixelLighting.reset();
         Settings::shaders().mClassicFalloff.reset();
+        Settings::shaders().mClampLighting.reset();
         Settings::shaders().mMatchSunlightToSun.reset();
-        Settings::shaders().mLightBoundsMultiplier.reset();
+        Settings::shaders().mLightRadiusMultiplier.reset();
         Settings::shaders().mMaximumLightDistance.reset();
         Settings::shaders().mLightFadeStart.reset();
         Settings::shaders().mMinimumInteriorBrightness.reset();
         Settings::shaders().mMaxLights.reset();
-        Settings::shaders().mLightingMethod.reset();
+        Settings::shaders().mClusteredLighting.reset();
 
-        const SceneUtil::LightingMethod lightingMethod = Settings::shaders().mLightingMethod;
-        const std::size_t lightIndex = mLightingMethodButton->findItemIndexWith(lightingMethodToStr(lightingMethod));
-        mLightingMethodButton->setIndexSelected(lightIndex);
         updateMaxLightsComboBox(mMaxLights);
 
         apply();
@@ -712,6 +713,80 @@ namespace MWGui
                 break;
             default:
                 Log(Debug::Warning) << "Unexpected texture filtering option pos " << pos;
+                break;
+        }
+
+        apply();
+    }
+
+    void SettingsWindow::onAnisotropyChanged(MyGUI::ComboBox* /*sender*/, size_t pos)
+    {
+        if (pos == MyGUI::ITEM_NONE)
+            return;
+
+        auto& generalSettings = Settings::general();
+        switch (pos)
+        {
+            case 0:
+                generalSettings.mAnisotropy.set(0);
+                break;
+            case 1:
+                generalSettings.mAnisotropy.set(2);
+                break;
+            case 2:
+                generalSettings.mAnisotropy.set(4);
+                break;
+            case 3:
+                generalSettings.mAnisotropy.set(8);
+                break;
+            case 4:
+                generalSettings.mAnisotropy.set(16);
+                break;
+            default:
+                Log(Debug::Warning) << "Unexpected anisotropy option pos " << pos;
+                break;
+        }
+
+        apply();
+    }
+
+    void SettingsWindow::onShadowsButtonClicked(MyGUI::Widget* /*sender*/)
+    {
+        auto& shadowSettings = Settings::shadows();
+        shadowSettings.mEnableShadows.set(shadowSettings.mActorShadows || shadowSettings.mPlayerShadows
+            || shadowSettings.mTerrainShadows || shadowSettings.mObjectShadows);
+        apply();
+    }
+
+    void SettingsWindow::onShadowMapResolutionChanged(MyGUI::ComboBox* sender, size_t pos)
+    {
+        if (pos == MyGUI::ITEM_NONE)
+            return;
+
+        auto& shadowSettings = Settings::shadows();
+        switch (pos)
+        {
+            case 0:
+                shadowSettings.mShadowMapResolution.set(512);
+                break;
+            case 1:
+                shadowSettings.mShadowMapResolution.set(1024);
+                break;
+            case 2:
+                shadowSettings.mShadowMapResolution.set(2048);
+                break;
+            case 3:
+                shadowSettings.mShadowMapResolution.set(4096);
+                break;
+            case 4:
+            {
+                int* resolution = sender->getItemDataAt<int>(4);
+                if (resolution)
+                    shadowSettings.mShadowMapResolution.set(*resolution);
+                break;
+            }
+            default:
+                Log(Debug::Warning) << "Unexpected shadow map resolution pos " << pos;
                 break;
         }
 
@@ -781,6 +856,8 @@ namespace MWGui
         MWBase::Environment::get().getInputManager()->processChangedSettings(changed);
         MWBase::Environment::get().getMechanicsManager()->processChangedSettings(changed);
         Settings::Manager::resetPendingChanges();
+
+        updateLightSettings();
     }
 
     void SettingsWindow::onKeyboardSwitchClicked(MyGUI::Widget* /*sender*/)
@@ -850,26 +927,15 @@ namespace MWGui
 
     void SettingsWindow::updateLightSettings()
     {
-        auto lightingMethod = MWBase::Environment::get().getResourceSystem()->getSceneManager()->getLightingMethod();
-        MyGUI::UString lightingMethodStr = lightingMethodToStr(lightingMethod);
+        mClusteredLightingButton->setEnabled(
+            MWBase::Environment::get().getResourceSystem()->getSceneManager()->isClusteredLightingSupported());
 
-        mLightingMethodButton->removeAllItems();
+        const bool isClustered = Settings::shaders().mClusteredLighting;
+        const bool isClassic = !isClustered && Settings::shaders().mClassicFalloff;
 
-        std::array<SceneUtil::LightingMethod, 3> methods = {
-            SceneUtil::LightingMethod::FFP,
-            SceneUtil::LightingMethod::PerObjectUniform,
-            SceneUtil::LightingMethod::SingleUBO,
-        };
-
-        for (const auto& method : methods)
-        {
-            if (!MWBase::Environment::get().getResourceSystem()->getSceneManager()->isSupportedLightingMethod(method))
-                continue;
-
-            mLightingMethodButton->addItem(
-                lightingMethodToStr(method), SceneUtil::LightManager::getLightingMethodString(method));
-        }
-        mLightingMethodButton->setIndexSelected(mLightingMethodButton->findItemIndexWith(lightingMethodStr));
+        mClassicFalloffWidget->setVisible(!isClustered);
+        mMinimumBrightnessText->setVisible(!isClassic);
+        mMinimumBrightnessScroll->setVisible(!isClassic);
     }
 
     void SettingsWindow::updateWindowModeSettings()

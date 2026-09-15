@@ -167,6 +167,25 @@ void MWMechanics::NpcStats::setFactionReputation(const ESM::RefId& faction, int 
     mFactionReputation[faction] = value;
 }
 
+namespace
+{
+    float getTypeFactor(ESM::RefId id, const ESM::Class& npcClass)
+    {
+        const auto& gmst = MWBase::Environment::get().getESMStore()->get<ESM::GameSetting>();
+        for (const auto& skill : npcClass.mData.mMinorSkills)
+        {
+            if (skill == id)
+                return gmst.find("fMinorSkillBonus")->mValue.getFloat();
+        }
+        for (const auto& skill : npcClass.mData.mMajorSkills)
+        {
+            if (skill == id)
+                return gmst.find("fMajorSkillBonus")->mValue.getFloat();
+        }
+        return gmst.find("fMiscSkillBonus")->mValue.getFloat();
+    }
+}
+
 float MWMechanics::NpcStats::getSkillProgressRequirement(ESM::RefId id, const ESM::Class& npcClass) const
 {
     float progressRequirement = 1.f + getSkill(id).getBase();
@@ -174,21 +193,7 @@ float MWMechanics::NpcStats::getSkillProgressRequirement(ESM::RefId id, const ES
     const MWWorld::Store<ESM::GameSetting>& gmst = MWBase::Environment::get().getESMStore()->get<ESM::GameSetting>();
     const ESM::Skill* skill = MWBase::Environment::get().getESMStore()->get<ESM::Skill>().find(id);
 
-    float typeFactor = gmst.find("fMiscSkillBonus")->mValue.getFloat();
-    int index = ESM::Skill::refIdToIndex(skill->mId);
-    for (const auto& skills : npcClass.mData.mSkills)
-    {
-        if (skills[0] == index)
-        {
-            typeFactor = gmst.find("fMinorSkillBonus")->mValue.getFloat();
-            break;
-        }
-        else if (skills[1] == index)
-        {
-            typeFactor = gmst.find("fMajorSkillBonus")->mValue.getFloat();
-            break;
-        }
-    }
+    const float typeFactor = getTypeFactor(id, npcClass);
 
     progressRequirement *= typeFactor;
 
@@ -251,7 +256,7 @@ void MWMechanics::NpcStats::updateHealth()
     setHealth(floor(0.5f * (strength + endurance)));
 }
 
-int MWMechanics::NpcStats::getLevelupAttributeMultiplier(ESM::Attribute::AttributeID attribute) const
+int MWMechanics::NpcStats::getLevelupAttributeMultiplier(ESM::RefId attribute) const
 {
     auto it = mSkillIncreases.find(attribute);
     if (it == mSkillIncreases.end() || it->second == 0)
@@ -265,7 +270,7 @@ int MWMechanics::NpcStats::getLevelupAttributeMultiplier(ESM::Attribute::Attribu
     return MWBase::Environment::get().getESMStore()->get<ESM::GameSetting>().find(gmst.str())->mValue.getInteger();
 }
 
-int MWMechanics::NpcStats::getSkillIncreasesForAttribute(ESM::Attribute::AttributeID attribute) const
+int MWMechanics::NpcStats::getSkillIncreasesForAttribute(ESM::RefId attribute) const
 {
     auto it = mSkillIncreases.find(attribute);
     if (it == mSkillIncreases.end())
@@ -273,7 +278,7 @@ int MWMechanics::NpcStats::getSkillIncreasesForAttribute(ESM::Attribute::Attribu
     return it->second;
 }
 
-void MWMechanics::NpcStats::setSkillIncreasesForAttribute(ESM::Attribute::AttributeID attribute, int increases)
+void MWMechanics::NpcStats::setSkillIncreasesForAttribute(ESM::RefId attribute, int increases)
 {
     if (increases == 0)
         mSkillIncreases.erase(attribute);
@@ -341,9 +346,8 @@ bool MWMechanics::NpcStats::hasSkillsForRank(const ESM::RefId& factionId, int ra
 
     std::vector<int> skills;
 
-    for (int index : faction.mData.mSkills)
+    for (const ESM::RefId& id : faction.mData.mSkills)
     {
-        ESM::RefId id = ESM::Skill::indexToRefId(index);
         if (!id.empty())
             skills.push_back(static_cast<int>(getSkill(id).getBase()));
     }
@@ -426,12 +430,7 @@ void MWMechanics::NpcStats::writeState(ESM::NpcStats& state) const
     state.mCrimeDispositionModifier = mCrimeDispositionModifier;
 
     for (const auto& [id, value] : mSkills)
-    {
-        // TODO extend format
-        auto index = ESM::Skill::refIdToIndex(id);
-        assert(index >= 0);
-        value.writeState(state.mSkills[static_cast<size_t>(index)]);
-    }
+        value.writeState(state.mSkills[id]);
 
     state.mIsWerewolf = mIsWerewolf;
 
@@ -449,14 +448,7 @@ void MWMechanics::NpcStats::writeState(ESM::NpcStats& state) const
     state.mWerewolfKills = mWerewolfKills;
     state.mLevelProgress = mLevelProgress;
 
-    state.mSkillIncrease.fill(0);
-    for (const auto& [key, value] : mSkillIncreases)
-    {
-        // TODO extend format
-        auto index = ESM::Attribute::refIdToIndex(key);
-        assert(index >= 0);
-        state.mSkillIncrease[static_cast<size_t>(index)] = value;
-    }
+    state.mSkillIncrease = mSkillIncreases;
 
     for (size_t i = 0; i < state.mSpecIncreases.size(); ++i)
         state.mSpecIncreases[i] = mSpecIncreases[i];
@@ -490,13 +482,8 @@ void MWMechanics::NpcStats::readState(const ESM::NpcStats& state)
     mDisposition = state.mDisposition;
     mCrimeDispositionModifier = state.mCrimeDispositionModifier;
 
-    for (size_t i = 0; i < state.mSkills.size(); ++i)
-    {
-        // TODO extend format
-        ESM::RefId id = ESM::Skill::indexToRefId(static_cast<int>(i));
-        assert(!id.empty());
-        mSkills[id].readState(state.mSkills[i]);
-    }
+    for (const auto& [id, value] : state.mSkills)
+        mSkills[id].readState(value);
 
     mIsWerewolf = state.mIsWerewolf;
 
@@ -506,8 +493,7 @@ void MWMechanics::NpcStats::readState(const ESM::NpcStats& state)
     mWerewolfKills = state.mWerewolfKills;
     mLevelProgress = state.mLevelProgress;
 
-    for (size_t i = 0; i < state.mSkillIncrease.size(); ++i)
-        mSkillIncreases[ESM::Attribute::indexToRefId(static_cast<int>(i))] = state.mSkillIncrease[i];
+    mSkillIncreases = state.mSkillIncrease;
 
     for (size_t i = 0; i < state.mSpecIncreases.size(); ++i)
         mSpecIncreases[i] = state.mSpecIncreases[i];

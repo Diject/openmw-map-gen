@@ -1,5 +1,8 @@
 #include "util.hpp"
 
+#include <ranges>
+#include <unordered_set>
+
 #include <MyGUI_FactoryManager.h>
 
 #include "adapter.hpp"
@@ -12,7 +15,6 @@
 #include "window.hpp"
 
 #include "element.hpp"
-#include "registerscriptsettings.hpp"
 
 namespace LuaUi
 {
@@ -54,5 +56,45 @@ namespace LuaUi
     {
         while (!Element::sMenuElements.empty())
             Element::erase(Element::sMenuElements.begin()->second.get());
+    }
+
+    void updateAllElementCoords()
+    {
+        std::unordered_set<WidgetExtension*> roots;
+        auto collectRoot = [&roots](Element* element) {
+            if (!element->mRoot)
+                return;
+            WidgetExtension* root = element->mRoot;
+            while (root->getParent())
+                root = root->getParent();
+            roots.insert(root);
+        };
+        Element::forEach(false, collectRoot);
+        Element::forEach(true, collectRoot);
+        for (WidgetExtension* root : roots)
+            root->updateCoord();
+    }
+
+    bool warnUnused(std::vector<std::string>& warnings, sol::object object, const std::string& tableName,
+        const std::vector<std::string_view>& usedKeys, bool generateWarningStrings)
+    {
+        auto beginningSize = warnings.size();
+        if (!object.is<sol::table>())
+            return false;
+        sol::table table = object.as<sol::table>();
+        for (const auto& [key, value] : table)
+        {
+            if (!key.is<std::string>())
+                continue;
+            auto keyStr = key.as<std::string>();
+
+            if (std::ranges::find(usedKeys, keyStr) == usedKeys.end())
+            {
+                if (!generateWarningStrings)
+                    return true;
+                warnings.push_back("unused key '" + keyStr + "' in " + tableName);
+            }
+        }
+        return beginningSize != warnings.size();
     }
 }

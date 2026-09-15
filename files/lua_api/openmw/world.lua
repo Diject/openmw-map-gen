@@ -139,6 +139,13 @@
 -- @return #table
 
 ---
+-- Find all objects within a given range of a world position
+-- @function [parent=#world] getObjectsInRange
+-- @param openmw.util#Vector3 position The world position
+-- @param #number range The range
+-- @return #list<openmw.core#GameObject>
+
+---
 -- Return an object by RefNum/FormId.
 -- Note: the function always returns @{openmw.core#GameObject} and doesn't validate that
 -- the object exists in the game world. If it doesn't exist or not yet loaded to memory),
@@ -147,6 +154,18 @@
 -- @param #string formId String returned by `core.getFormId`
 -- @return openmw.core#GameObject
 -- @usage local obj = world.getObjectByFormId(core.getFormId('Morrowind.esm', 128964))
+
+---
+-- Returns all objects with the given record ID.
+-- Note: Searching all world spaces or a large world space can impact performance.
+-- @function [parent=#world] getObjectsByRecordId
+-- @param #string recordId Record ID
+-- @param #string worldSpaceId (Optional) ID of the world space to search. (Note that an interior cell's world space ID is its ID and that the ESM3 exterior world space's ID is `sys::default`.)
+-- @param #bool loadedOnly (Optional) When true, only cells that have previously been loaded are searched.
+-- @return list<openmw.core#GameObject>
+-- @usage for _, object in pairs(world.getObjectsByRecordId('TempleMarker', world.players[1].cell.worldSpaceId)) do
+--   print(object.cell.name)
+-- end
 
 ---
 -- Create a new instance of the given record.
@@ -174,10 +193,20 @@
 -- * @{openmw.types#ArmorRecord},
 -- * @{openmw.types#BookRecord},
 -- * @{openmw.types#ClothingRecord},
+-- * @{openmw.types#ContainerRecord},
+-- * @{openmw.types#CreatureLevelledListRecord},
+-- * @{openmw.types#CreatureRecord},
+-- * @{openmw.types#DoorRecord},
+-- * @{openmw.core#Enchantment},
+-- * @{openmw.types#IngredientRecord},
+-- * @{openmw.types#ItemLevelledListRecord},
 -- * @{openmw.types#LightRecord},
 -- * @{openmw.types#MiscellaneousRecord},
 -- * @{openmw.types#NpcRecord},
 -- * @{openmw.types#PotionRecord},
+-- * @{openmw.types#ProbeRecord},
+-- * @{openmw.core#Spell},
+-- * @{openmw.types#StaticRecord},
 -- * @{openmw.types#WeaponRecord}
 -- @function [parent=#world] createRecord
 -- @param #any record A record to be registered in the database. Must be one of the supported types. The id field is not used, one will be generated for you.

@@ -26,17 +26,19 @@ namespace
     {
         ESM::RefNum mRefNum;
         std::size_t mRefID;
+        std::size_t mCellIndex;
 
-        Ref(ESM::RefNum refNum, std::size_t refID)
+        Ref(ESM::RefNum refNum, std::size_t refID, std::size_t cellIndex)
             : mRefNum(refNum)
             , mRefID(refID)
+            , mCellIndex(cellIndex)
         {
         }
     };
 
     constexpr std::size_t deletedRefID = std::numeric_limits<std::size_t>::max();
 
-    void readRefs(const ESM::Cell& cell, std::vector<Ref>& refs, std::vector<ESM::RefId>& refIDs,
+    void readRefs(const ESM::Cell& cell, std::size_t cellIndex, std::vector<Ref>& refs, std::vector<ESM::RefId>& refIDs,
         std::set<ESM::RefId>& keyIDs, ESM::ReadersCache& readers)
     {
         // TODO: we have many similar copies of this code.
@@ -50,13 +52,13 @@ namespace
             while (cell.getNextRef(*reader, ref, deleted))
             {
                 if (deleted)
-                    refs.emplace_back(ref.mRefNum, deletedRefID);
+                    refs.emplace_back(ref.mRefNum, deletedRefID, cellIndex);
                 else if (std::find(cell.mMovedRefs.begin(), cell.mMovedRefs.end(), ref.mRefNum)
                     == cell.mMovedRefs.end())
                 {
                     if (!ref.mKey.empty())
                         keyIDs.insert(std::move(ref.mKey));
-                    refs.emplace_back(ref.mRefNum, refIDs.size());
+                    refs.emplace_back(ref.mRefNum, refIDs.size(), cellIndex);
                     refIDs.push_back(std::move(ref.mRefID));
                 }
             }
@@ -64,12 +66,12 @@ namespace
         for (const auto& [value, deleted] : cell.mLeasedRefs)
         {
             if (deleted)
-                refs.emplace_back(value.mRefNum, deletedRefID);
+                refs.emplace_back(value.mRefNum, deletedRefID, cellIndex);
             else
             {
                 if (!value.mKey.empty())
                     keyIDs.insert(std::move(value.mKey));
-                refs.emplace_back(value.mRefNum, refIDs.size());
+                refs.emplace_back(value.mRefNum, refIDs.size(), cellIndex);
                 refIDs.push_back(value.mRefID);
             }
         }
@@ -175,27 +177,27 @@ namespace
                 if (!mgef)
                 {
                     Log(Debug::Verbose) << RecordType::getRecordType() << " " << spell.mId
-                                        << ": dropping invalid effect (index " << iter->mData.mEffectID << ")";
+                                        << ": dropping invalid effect (" << iter->mData.mEffectID << ")";
                     iter = spell.mEffects.mList.erase(iter);
                     changed = true;
                     continue;
                 }
 
-                if (!(mgef->mData.mFlags & ESM::MagicEffect::TargetAttribute) && iter->mData.mAttribute != -1)
+                if (!(mgef->mData.mFlags & ESM::MagicEffect::TargetAttribute) && !iter->mData.mAttribute.empty())
                 {
-                    iter->mData.mAttribute = -1;
+                    iter->mData.mAttribute = ESM::RefId();
                     Log(Debug::Verbose) << RecordType::getRecordType() << " " << spell.mId
-                                        << ": dropping unexpected attribute argument of "
-                                        << ESM::MagicEffect::indexToGmstString(iter->mData.mEffectID) << " effect";
+                                        << ": dropping unexpected attribute argument of " << iter->mData.mEffectID
+                                        << " effect";
                     changed = true;
                 }
 
-                if (!(mgef->mData.mFlags & ESM::MagicEffect::TargetSkill) && iter->mData.mSkill != -1)
+                if (!(mgef->mData.mFlags & ESM::MagicEffect::TargetSkill) && !iter->mData.mSkill.empty())
                 {
-                    iter->mData.mSkill = -1;
+                    iter->mData.mSkill = ESM::RefId();
                     Log(Debug::Verbose) << RecordType::getRecordType() << " " << spell.mId
-                                        << ": dropping unexpected skill argument of "
-                                        << ESM::MagicEffect::indexToGmstString(iter->mData.mEffectID) << " effect";
+                                        << ": dropping unexpected skill argument of " << iter->mData.mEffectID
+                                        << " effect";
                     changed = true;
                 }
 
@@ -268,7 +270,7 @@ namespace MWWorld
             auto recordType = static_cast<ESM4::RecordTypes>(reader.hdr().record.typeId);
 
             ESM::RecNameInts esm4RecName = static_cast<ESM::RecNameInts>(ESM::esm4Recname(recordType));
-            if constexpr (HasRecordId<T>::value)
+            if constexpr (HasRecordId<T>)
             {
                 if constexpr (ESM::isESM4Rec(T::sRecordId))
                 {
@@ -524,9 +526,6 @@ namespace MWWorld
         for (const auto& [_, store] : mStoreImp->mRecNameToStore)
             store->setUp();
 
-        getWritable<ESM::Skill>().setUp(get<ESM::GameSetting>());
-        getWritable<ESM::MagicEffect>().setUp();
-        getWritable<ESM::Attribute>().setUp(get<ESM::GameSetting>());
         getWritable<ESM4::Land>().updateLandPositions(get<ESM4::Cell>());
         getWritable<ESM4::Reference>().preprocessReferences(get<ESM4::Cell>());
         getWritable<ESM4::ActorCharacter>().preprocessReferences(get<ESM4::Cell>());
@@ -561,27 +560,42 @@ namespace MWWorld
     {
         // TODO: We currently need to read entire files here again.
         // We should consider consolidating or deferring this reading.
-        if (!mRefCount.empty())
+        if (!mRefInfo.empty())
             return;
         std::vector<Ref> refs;
         std::set<ESM::RefId> keyIDs;
         std::vector<ESM::RefId> refIDs;
         const Store<ESM::Cell>& cells = get<ESM::Cell>();
-        for (auto it = cells.intBegin(); it != cells.intEnd(); ++it)
-            readRefs(*it, refs, refIDs, keyIDs, readers);
-        for (auto it = cells.extBegin(); it != cells.extEnd(); ++it)
-            readRefs(*it, refs, refIDs, keyIDs, readers);
+        const std::size_t cellCount = cells.getSize();
+        const std::size_t interiorCellCount = cells.getIntSize();
+        const std::size_t exteriorCellCount = cells.getExtSize();
+        for (std::size_t i = 0; i < cellCount; ++i)
+            readRefs(*cells.at(i), i, refs, refIDs, keyIDs, readers);
         const auto lessByRefNum = [](const Ref& l, const Ref& r) { return l.mRefNum < r.mRefNum; };
         std::stable_sort(refs.begin(), refs.end(), lessByRefNum);
         const auto equalByRefNum = [](const Ref& l, const Ref& r) { return l.mRefNum == r.mRefNum; };
-        const auto incrementRefCount = [&](const Ref& value) {
-            if (value.mRefID != deletedRefID)
-            {
-                ESM::RefId& refId = refIDs[value.mRefID];
-                ++mRefCount[std::move(refId)];
-            }
+        const auto forEachEffectiveRef = [&](auto&& fn) {
+            Misc::forEachUnique(refs.rbegin(), refs.rend(), equalByRefNum, [&](const Ref& value) {
+                if (value.mRefID != deletedRefID)
+                    fn(value, refIDs[value.mRefID]);
+            });
         };
-        Misc::forEachUnique(refs.rbegin(), refs.rend(), equalByRefNum, incrementRefCount);
+
+        std::vector<std::vector<RefInfo*>> refsPerCell(cellCount);
+        forEachEffectiveRef([&](const Ref& value, const ESM::RefId& refId) {
+            RefInfo& info = mRefInfo[refId];
+            ++info.mCount;
+            refsPerCell[value.mCellIndex].push_back(&info);
+        });
+        // Exteriors first, matching world lookup order.
+        for (std::size_t i = 0; i < cellCount; ++i)
+        {
+            const std::size_t cellIndex = i < exteriorCellCount ? interiorCellCount + i : i - exteriorCellCount;
+            const ESM::Cell* const cell = cells.at(cellIndex);
+            for (RefInfo* info : refsPerCell[cellIndex])
+                if (info->mCells.empty() || info->mCells.back() != cell)
+                    info->mCells.push_back(cell);
+        }
         auto& store = getWritable<ESM::Miscellaneous>().mStatic;
         for (const auto& id : keyIDs)
         {
@@ -593,10 +607,18 @@ namespace MWWorld
 
     int ESMStore::getRefCount(const ESM::RefId& id) const
     {
-        auto it = mRefCount.find(id);
-        if (it == mRefCount.end())
+        auto it = mRefInfo.find(id);
+        if (it == mRefInfo.end())
             return 0;
-        return it->second;
+        return it->second.mCount;
+    }
+
+    std::span<const ESM::Cell* const> ESMStore::getRefCells(const ESM::RefId& id) const
+    {
+        const auto it = mRefInfo.find(id);
+        if (it == mRefInfo.end())
+            return {};
+        return it->second.mCells;
     }
 
     void ESMStore::validate()
@@ -691,7 +713,9 @@ namespace MWWorld
             + get<ESM::Activator>().getDynamicSize() + get<ESM::Miscellaneous>().getDynamicSize()
             + get<ESM::Weapon>().getDynamicSize() + get<ESM::CreatureLevList>().getDynamicSize()
             + get<ESM::ItemLevList>().getDynamicSize() + get<ESM::Creature>().getDynamicSize()
-            + get<ESM::Container>().getDynamicSize() + get<ESM::Light>().getDynamicSize();
+            + get<ESM::Container>().getDynamicSize() + get<ESM::Light>().getDynamicSize()
+            + get<ESM::Static>().getDynamicSize() + get<ESM::Door>().getDynamicSize()
+            + get<ESM::Probe>().getDynamicSize() + get<ESM::Ingredient>().getDynamicSize();
     }
 
     void ESMStore::write(ESM::ESMWriter& writer, Loading::Listener& progress) const
@@ -718,6 +742,10 @@ namespace MWWorld
         get<ESM::Creature>().write(writer, progress);
         get<ESM::Container>().write(writer, progress);
         get<ESM::Light>().write(writer, progress);
+        get<ESM::Static>().write(writer, progress);
+        get<ESM::Door>().write(writer, progress);
+        get<ESM::Probe>().write(writer, progress);
+        get<ESM::Ingredient>().write(writer, progress);
     }
 
     bool ESMStore::readRecord(ESM::ESMReader& reader, uint32_t typeId)
@@ -743,6 +771,10 @@ namespace MWWorld
             case ESM::REC_LEVI:
             case ESM::REC_LEVC:
             case ESM::REC_LIGH:
+            case ESM::REC_STAT:
+            case ESM::REC_DOOR:
+            case ESM::REC_PROB:
+            case ESM::REC_INGR:
                 mStoreImp->mRecNameToStore[type]->read(reader, true);
                 return true;
 
@@ -774,7 +806,7 @@ namespace MWWorld
             throw std::runtime_error("Invalid player record (race or class unavailable");
     }
 
-    std::pair<std::shared_ptr<MWMechanics::SpellList>, bool> ESMStore::getSpellList(const ESM::RefId& id) const
+    std::pair<std::shared_ptr<MWMechanics::SpellList>, bool> ESMStore::getSpellList(ESM::RefId id, bool autoCalc) const
     {
         auto result = mSpellListCache.find(id);
         std::shared_ptr<MWMechanics::SpellList> ptr;
@@ -783,7 +815,7 @@ namespace MWWorld
         if (!ptr)
         {
             int type = find(id);
-            ptr = std::make_shared<MWMechanics::SpellList>(id, type);
+            ptr = std::make_shared<MWMechanics::SpellList>(id, type, autoCalc);
             if (result != mSpellListCache.end())
                 result->second = ptr;
             else

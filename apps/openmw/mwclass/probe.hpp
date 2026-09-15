@@ -23,6 +23,8 @@ namespace MWClass
 
         bool isItem(const MWWorld::ConstPtr&) const override { return true; }
 
+        std::string_view getWerewolfRefusalSoundId() const override { return "WolfItem"; }
+
         std::unique_ptr<MWWorld::Action> activate(const MWWorld::Ptr& ptr, const MWWorld::Ptr& actor) const override;
         ///< Generate action for activation
 
@@ -45,7 +47,7 @@ namespace MWClass
         const ESM::RefId& getDownSoundId(const MWWorld::ConstPtr& ptr) const override;
         ///< Return the put down sound Id
 
-        const std::string& getInventoryIcon(const MWWorld::ConstPtr& ptr) const override;
+        VFS::Path::NormalizedView getInventoryIcon(const MWWorld::ConstPtr& ptr) const override;
         ///< Return name of inventory icon.
 
         std::pair<int, std::string_view> canBeEquipped(
@@ -54,7 +56,7 @@ namespace MWClass
         std::unique_ptr<MWWorld::Action> use(const MWWorld::Ptr& ptr, bool force = false) const override;
         ///< Generate action for using via inventory menu
 
-        std::string_view getModel(const MWWorld::ConstPtr& ptr) const override;
+        VFS::Path::NormalizedView getModel(const MWWorld::ConstPtr& ptr) const override;
 
         bool canSell(const MWWorld::ConstPtr& item, int npcServices) const override;
 

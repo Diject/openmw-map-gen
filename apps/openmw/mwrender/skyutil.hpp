@@ -1,7 +1,6 @@
 #ifndef OPENMW_MWRENDER_SKYUTIL_H
 #define OPENMW_MWRENDER_SKYUTIL_H
 
-#include <osg/Material>
 #include <osg/Matrixf>
 #include <osg/Texture2D>
 #include <osg/Transform>
@@ -11,6 +10,7 @@
 #include <osgParticle/Shooter>
 
 #include <components/esm/refid.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 
@@ -98,15 +98,35 @@ namespace MWRender
             Unspecified
         };
 
+        static constexpr unsigned int phaseToInt(Phase phase)
+        {
+            switch (phase)
+            {
+                case Phase::New:
+                    return 0;
+                case Phase::WaxingCrescent:
+                case Phase::WaningCrescent:
+                    return 1;
+                case Phase::FirstQuarter:
+                case Phase::ThirdQuarter:
+                    return 2;
+                case Phase::WaxingGibbous:
+                case Phase::WaningGibbous:
+                    return 3;
+                case Phase::Full:
+                    return 4;
+                case Phase::Unspecified:
+                    return 0;
+            }
+            return 0;
+        }
+
         float mRotationFromHorizon;
         float mRotationFromNorth;
         Phase mPhase;
         float mShadowBlend;
         float mMoonAlpha;
     };
-
-    osg::ref_ptr<osg::Material> createAlphaTrackingUnlitMaterial();
-    osg::ref_ptr<osg::Material> createUnlitMaterial(osg::Material::ColorMode colorMode = osg::Material::OFF);
 
     class OcclusionCallback
     {
@@ -140,7 +160,7 @@ namespace MWRender
     class AtmosphereNightUpdater : public SceneUtil::StateSetUpdater
     {
     public:
-        AtmosphereNightUpdater(Resource::ImageManager* imageManager, bool forceShaders);
+        AtmosphereNightUpdater(Resource::ImageManager* imageManager);
 
         void setFade(float fade);
 
@@ -152,13 +172,12 @@ namespace MWRender
     private:
         osg::Vec4f mColor;
         osg::ref_ptr<osg::Texture2D> mTexture;
-        bool mForceShaders;
     };
 
     class CloudUpdater : public SceneUtil::StateSetUpdater
     {
     public:
-        CloudUpdater(bool forceShaders);
+        CloudUpdater();
 
         void setTexture(osg::ref_ptr<osg::Texture2D> texture);
 
@@ -174,7 +193,6 @@ namespace MWRender
         osg::ref_ptr<osg::Texture2D> mTexture;
         osg::Vec4f mEmissionColor;
         float mOpacity;
-        bool mForceShaders;
         osg::Matrixf mTexMat;
     };
 

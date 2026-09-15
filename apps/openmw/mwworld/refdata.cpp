@@ -19,7 +19,7 @@ namespace
         Flag_SuppressActivate = 1, // If set, activation will be suppressed and redirected to the OnActivate flag, which
                                    // can then be handled by a script.
         Flag_OnActivate = 2,
-        Flag_ActivationBuffered = 4
+        Flag_ActivationBuffered = 4,
     };
 }
 
@@ -269,6 +269,11 @@ namespace MWWorld
         return mCustomData.get();
     }
 
+    bool RefData::hasCustomData() const
+    {
+        return mCustomData != nullptr;
+    }
+
     bool RefData::hasChanged() const
     {
         return mChanged || !mAnimationState.empty();
@@ -310,6 +315,11 @@ namespace MWWorld
     ESM::AnimationState& RefData::getAnimationState()
     {
         return mAnimationState;
+    }
+
+    void RefData::setChanged(bool changed)
+    {
+        mChanged = changed;
     }
 
 }

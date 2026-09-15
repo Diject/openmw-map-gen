@@ -161,8 +161,8 @@ if(NOT OPENMW_USE_SYSTEM_RECASTNAVIGATION)
 
     include(FetchContent)
     FetchContent_Declare(recastnavigation
-        URL https://github.com/recastnavigation/recastnavigation/archive/c393777d26d2ff6519ac23612abf8af42678c9dd.zip
-        URL_HASH SHA512=48f20cee7a70c2f20f4c68bb74d5af11a1434be85294e37f5fe7b7aae820fbcdff4f35d3be286eaf6f9cbce0aed4201fcc090df409a5bd04aec5fd7c29b3ad94
+        URL https://github.com/OpenMW/recastnavigation/archive/03259f3287ff8330f0d66fcd98d022edddffaa97.zip
+        URL_HASH SHA512=63db2ac90904764d7f1466d3c95994ec51d777cddd870b70f8ef674c09ed166b3d16ffc4ac1d18d0eab865fda4bf51b6ea17049025b66a338d3cadd0f48dc712
         SOURCE_DIR fetched/recastnavigation
     )
     FetchContent_MakeAvailable(recastnavigation)
@@ -182,10 +182,8 @@ if (NOT OPENMW_USE_SYSTEM_SQLITE3)
     if (UNIX)
         target_link_libraries(sqlite3 ${CMAKE_DL_LIBS})
     endif()
-    add_library(SQLite::SQLite3 ALIAS sqlite3)
 
-    set(SQLite3_INCLUDE_DIR ${sqlite3_SOURCE_DIR}/ PARENT_SCOPE)
-    set(SQLite3_LIBRARY sqlite3 PARENT_SCOPE)
+    add_library(SQLite3::SQLite3 ALIAS sqlite3)
 endif()
 
 add_subdirectory(smhasher)
@@ -214,9 +212,10 @@ if (NOT OPENMW_USE_SYSTEM_YAML_CPP)
     endif()
 
     include(FetchContent)
+    # One commit after the 0.8.0 tag for CMake 4.x compatibility
     FetchContent_Declare(yaml-cpp
-        URL https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.zip
-        URL_HASH MD5=1e8ca0d6ccf99f3ed9506c1f6937d0ec
+        URL https://github.com/jbeder/yaml-cpp/archive/c2680200486572baf8221ba052ef50b58ecd816e.zip
+        URL_HASH SHA512=9eb328e37ff547e7f681d64e3a8f268a8a5645cb1c258106d1d9f959eec498dfc7c466690c56f210ad7d5fb95b806a30c87ccbb019cccf5c3c6135cfc3c13fe1
         SOURCE_DIR fetched/yaml-cpp
     )
     FetchContent_MakeAvailable(yaml-cpp)
@@ -285,8 +284,8 @@ if ((BUILD_COMPONENTS_TESTS OR BUILD_OPENCS_TESTS OR BUILD_OPENMW_TESTS) AND NOT
 
     include(FetchContent)
     FetchContent_Declare(googletest
-        URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip
-        URL_HASH SHA512=1479ea2f3172c622c0ca305f5b2bc45a42941221ec0ac7865e6d6d020ec4d008d952fc64e01a4c5138d7bed4148cf75596f25bb9e9044a98bbbf5662053ea11c
+        URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+        URL_HASH SHA512=2712d6f6e7f38eb0c8d5ebba957588c70aff68ea433c7aa0b31bde8cacfbe47de908a6e5a99a021969da568f5075daa2c45fca602bbf56711d146d333b76562b
         SOURCE_DIR fetched/googletest
     )
     if (MSVC)

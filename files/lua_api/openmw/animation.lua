@@ -218,6 +218,20 @@
 -- @return #string 
 
 ---
+-- Adds a spell-casting glow to the actor.
+-- Can only be used on self.
+-- @function [parent=#animation] addGlow
+-- @param openmw.core#GameObject actor
+-- @param #table options A table of parameters. Must contain the following required parameters:
+--
+--   * `color` - the @{openmw.util#Color} of the glow.
+--   * `duration` - a finite duration in seconds. A negative value makes the glow permanent.
+--
+-- @usage
+-- local util = require('openmw.util')
+-- animation.addGlow(self, { color = util.color.rgb(1, 0, 0), duration = 1.5 })
+
+---
 -- Plays a VFX on the actor.
 -- Can only be used on self. Can also be evoked by sending an AddVfx event to the target actor.
 -- @function [parent=#animation] addVfx
@@ -230,6 +244,8 @@
 --   * `particleTextureOverride` - name of the particle texture to use. (default: "")
 --   * `vfxId` - a string ID that can be used to remove the effect later, using #removeVfx, and to avoid duplicate effects. The default value of "" can have duplicates. To avoid interaction with the engine, use unique identifiers unrelated to magic effect IDs. The engine uses this identifier to add and remove magic effects based on what effects are active on the actor. If this is set equal to the @{openmw.core#MagicEffectId} identifier of the magic effect being added, for example core.magic.EFFECT_TYPE.FireDamage, then the engine will remove it once the fire damage effect on the actor reaches 0. (Default: "").
 --   * `useAmbientLight` - boolean, vfx get a white ambient light attached in Morrowind. If false don't attach this. (default: true)
+--   * `autoTransform` - boolean, if true, the engine will auto-calculate the transform. (default: true)
+--   * `transform` - relative transform (openmw.util#Transform) applied to the vfx. If autoTransform is true this will be applied on top of it.
 --
 -- @usage local mgef = core.magic.effects.records[myEffectName]
 -- anim.addVfx(self, 'VFX_Hands', {boneName = 'Bip01 L Hand', particleTextureOverride = mgef.particle, loop = mgef.continuousVfx, vfxId = mgef.id..'_myuniquenamehere'})
@@ -244,6 +260,7 @@
 --     vfxId = mgef.id,
 --     particleTextureOverride = mgef.particle,
 --     loop = false,
+--     transform = util.transform.move(100, 0, 0)
 --   }
 -- })
 --
@@ -266,4 +283,3 @@
 
 
 return nil
-

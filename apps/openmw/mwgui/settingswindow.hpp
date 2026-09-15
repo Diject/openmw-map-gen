@@ -41,17 +41,25 @@ namespace MWGui
         MyGUI::ComboBox* mVSyncModeList;
         MyGUI::Button* mWindowBorderButton;
         MyGUI::ComboBox* mTextureFilteringButton;
+        MyGUI::ComboBox* mAnisotropy;
 
         MyGUI::Button* mWaterRefractionButton;
-        MyGUI::Button* mSunlightScatteringButton;
-        MyGUI::Button* mWobblyShoresButton;
         MyGUI::ComboBox* mWaterTextureSize;
         MyGUI::ComboBox* mWaterReflectionDetail;
         MyGUI::ComboBox* mWaterRainRippleDetail;
 
         MyGUI::ComboBox* mMaxLights;
-        MyGUI::ComboBox* mLightingMethodButton;
+        MyGUI::Button* mClusteredLightingButton;
+        MyGUI::Widget* mClassicFalloffWidget;
         MyGUI::Button* mLightsResetButton;
+        MyGUI::Widget* mMinimumBrightnessText;
+        MyGUI::Widget* mMinimumBrightnessScroll;
+
+        MyGUI::Button* mActorShadowsButton;
+        MyGUI::Button* mPlayerShadowsButton;
+        MyGUI::Button* mTerrainShadowsButton;
+        MyGUI::Button* mObjectShadowsButton;
+        MyGUI::ComboBox* mShadowMapResolution;
 
         MyGUI::ComboBox* mPrimaryLanguage;
         MyGUI::ComboBox* mSecondaryLanguage;
@@ -77,6 +85,9 @@ namespace MWGui
         void onTabChanged(MyGUI::TabControl* sender, size_t index);
         void onOkButtonClicked(MyGUI::Widget* sender);
         void onTextureFilteringChanged(MyGUI::ComboBox* sender, size_t pos);
+        void onAnisotropyChanged(MyGUI::ComboBox* sender, size_t pos);
+        void onShadowsButtonClicked(MyGUI::Widget* sender);
+        void onShadowMapResolutionChanged(MyGUI::ComboBox* sender, size_t pos);
         void onSliderChangePosition(MyGUI::ScrollBar* scroller, size_t pos);
         void onButtonToggled(MyGUI::Widget* sender);
         void onResolutionSelected(MyGUI::ListBox* sender, size_t index);
@@ -84,12 +95,10 @@ namespace MWGui
         void onResolutionCancel();
         void highlightCurrentResolution();
 
-        void onRefractionButtonClicked(MyGUI::Widget* sender);
         void onWaterTextureSizeChanged(MyGUI::ComboBox* sender, size_t pos);
         void onWaterReflectionDetailChanged(MyGUI::ComboBox* sender, size_t pos);
         void onWaterRainRippleDetailChanged(MyGUI::ComboBox* sender, size_t pos);
 
-        void onLightingMethodButtonChanged(MyGUI::ComboBox* sender, size_t pos);
         void onLightsResetButtonClicked(MyGUI::Widget* sender);
         void onMaxLightsChanged(MyGUI::ComboBox* sender, size_t pos);
 

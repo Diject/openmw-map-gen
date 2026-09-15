@@ -126,6 +126,17 @@
 -- @param #number value
 
 ---
+-- Applies an offset to the cameras projection matrix, measured in pixels.
+-- Small offsets of up to roughly 2 pixels are safe, large offsets are only for debugging and will cause visual glitches.
+-- @function [parent=#camera] setProjectionOffset
+-- @param openmw.util#Vector2 offset
+
+---
+-- The offset applied to the cameras projection matrix, in pixels.
+-- @function [parent=#camera] getProjectionOffset
+-- @return openmw.util#Vector2
+
+---
 -- Set the camera position; can be used only if camera is in Static mode.
 -- @function [parent=#camera] setStaticPosition
 -- @param openmw.util#Vector3 pos
@@ -229,5 +240,13 @@
 -- @function [parent=#camera] worldToViewportVector
 -- @param openmw.util#Vector3 worldPos
 -- @return openmw.util#Vector3
+
+--- Returns the result of the last internal focus query.
+-- Updated by the crosshair, telekinesis checks and GUI mode.
+-- Out-of-reach targets keep the hit but lose hitObject.
+-- Cleared when a game is loaded.
+-- @function [parent=#camera] getFocusRay
+-- @return openmw.nearby#RayCastingResult
+-- @usage local target = camera.getFocusRay().hitObject
 
 return nil

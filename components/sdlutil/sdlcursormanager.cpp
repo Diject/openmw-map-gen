@@ -9,7 +9,6 @@
 
 #include <osg/Geometry>
 #include <osg/GraphicsContext>
-#include <osg/TexMat>
 #include <osg/Texture2D>
 #include <osg/Version>
 #include <osgViewer/GraphicsWindow>
@@ -119,7 +118,7 @@ namespace SDLUtil
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
         SDL_Texture* cursorTexture = SDL_CreateTextureFromSurface(renderer, cursorSurface);
 
-        SDL_RenderCopyEx(renderer, cursorTexture, nullptr, nullptr, -rotDegrees, nullptr, SDL_FLIP_VERTICAL);
+        SDL_RenderCopyEx(renderer, cursorTexture, nullptr, nullptr, -rotDegrees, nullptr, SDL_FLIP_NONE);
 
         SDL_DestroyTexture(cursorTexture);
         SDL_FreeSurface(cursorSurface);

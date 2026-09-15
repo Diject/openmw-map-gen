@@ -10,6 +10,98 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/resource/resourcesystem.hpp>
 
+namespace
+{
+    ESM::Creature tableToCreature(const sol::table& rec)
+    {
+        ESM::Creature crea;
+        auto setCreatureFlag = [&](std::string_view key, int flag) {
+            if (rec[key] == sol::nil)
+                return;
+
+            bool value = rec[key];
+            if (value)
+                crea.mFlags |= flag;
+            else
+                crea.mFlags &= ~flag;
+        };
+
+        // Start from template if provided
+        if (rec["template"] != sol::nil)
+            crea = LuaUtil::cast<ESM::Creature>(rec["template"]);
+        else
+            crea.blank();
+
+        // Basic fields
+        if (rec["name"] != sol::nil)
+            crea.mName = rec["name"];
+        if (rec["model"] != sol::nil)
+            crea.mModel = Misc::ResourceHelpers::meshPathForESM3(rec["model"].get<std::string_view>());
+        if (rec["mwscript"] != sol::nil)
+            crea.mScript = ESM::RefId::deserializeText(rec["mwscript"].get<std::string_view>());
+        if (rec["baseCreature"] != sol::nil)
+            crea.mOriginal = ESM::RefId::deserializeText(rec["baseCreature"].get<std::string_view>());
+
+        if (rec["soulValue"] != sol::nil)
+            crea.mData.mSoul = rec["soulValue"].get<int>();
+        if (rec["type"] != sol::nil)
+            crea.mData.mType = rec["type"].get<int>();
+        if (rec["baseGold"] != sol::nil)
+            crea.mData.mGold = rec["baseGold"].get<int>();
+        if (rec["combatSkill"] != sol::nil)
+            crea.mData.mCombat = rec["combatSkill"].get<int>();
+        if (rec["magicSkill"] != sol::nil)
+            crea.mData.mMagic = rec["magicSkill"].get<int>();
+        if (rec["stealthSkill"] != sol::nil)
+            crea.mData.mStealth = rec["stealthSkill"].get<int>();
+
+        if (rec["attack"] != sol::nil)
+        {
+            const sol::table atk = rec["attack"];
+            for (int i = 0; i < 6; ++i)
+            {
+                sol::object v = atk[i + 1];
+                if (v != sol::nil)
+                    crea.mData.mAttack[i] = v.as<int>();
+            }
+        }
+        setCreatureFlag("canFly", ESM::Creature::Flies);
+        setCreatureFlag("canSwim", ESM::Creature::Swims);
+        setCreatureFlag("canUseWeapons", ESM::Creature::Weapon);
+        setCreatureFlag("canWalk", ESM::Creature::Walks);
+        setCreatureFlag("isBiped", ESM::Creature::Bipedal);
+        setCreatureFlag("isEssential", ESM::Creature::Essential);
+        setCreatureFlag("isRespawning", ESM::Creature::Respawn);
+
+        if (rec["isPersistent"] != sol::nil)
+        {
+            bool persistent = rec["isPersistent"];
+            if (persistent)
+                crea.mRecordFlags |= ESM::FLAG_Persistent;
+            else
+                crea.mRecordFlags &= ~ESM::FLAG_Persistent;
+        }
+
+        if (rec["bloodType"] != sol::nil)
+            crea.mBloodType = rec["bloodType"].get<int>();
+
+        if (rec["servicesOffered"] != sol::nil)
+        {
+            const sol::table services = rec["servicesOffered"];
+            int flags = 0;
+            for (const auto& [mask, key] : MWLua::ServiceNames)
+            {
+                sol::object value = services[key];
+                if (value != sol::nil && value.as<bool>())
+                    flags |= mask;
+            }
+            crea.mAiData.mServices = flags;
+        }
+
+        return crea;
+    }
+}
+
 namespace sol
 {
     template <>
@@ -30,6 +122,7 @@ namespace MWLua
                 { "Undead", ESM::Creature::Undead },
                 { "Humanoid", ESM::Creature::Humanoid },
             }));
+        creature["createRecordDraft"] = tableToCreature;
 
         addRecordFunctionBinding<ESM::Creature>(creature, context);
 
@@ -72,6 +165,8 @@ namespace MWLua
             [](const ESM::Creature& rec) -> bool { return rec.mFlags & ESM::Creature::Essential; });
         record["isRespawning"] = sol::readonly_property(
             [](const ESM::Creature& rec) -> bool { return rec.mFlags & ESM::Creature::Respawn; });
+        record["isPersistent"] = sol::readonly_property(
+            [](const ESM::Creature& rec) -> bool { return rec.mRecordFlags & ESM::FLAG_Persistent; });
         record["bloodType"] = sol::readonly_property([](const ESM::Creature& rec) -> int { return rec.mBloodType; });
 
         addActorServicesBindings<ESM::Creature>(record, context);

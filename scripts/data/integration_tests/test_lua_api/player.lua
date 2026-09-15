@@ -41,7 +41,7 @@ local function rotateByPitch(object, target)
     rotate(object, target, nil)
 end
 
-testing.registerLocalTest('player yaw rotation',
+testing.registerLocalTest('rotating player with controls.yawChange should change rotation',
     function()
         local initialAlphaXZ, initialGammaXZ = self.rotation:getAnglesXZ()
         local initialAlphaZYX, initialBetaZYX, initialGammaZYX = self.rotation:getAnglesZYX()
@@ -61,7 +61,7 @@ testing.registerLocalTest('player yaw rotation',
         testing.expectEqualWithDelta(gamma2, initialGammaZYX, 0.05, 'Gamma rotation in ZYX convention should not change')
     end)
 
-testing.registerLocalTest('player pitch rotation',
+testing.registerLocalTest('rotating player with controls.pitchChange should change rotation',
     function()
         local initialAlphaXZ, initialGammaXZ = self.rotation:getAnglesXZ()
         local initialAlphaZYX, initialBetaZYX, initialGammaZYX = self.rotation:getAnglesZYX()
@@ -81,7 +81,7 @@ testing.registerLocalTest('player pitch rotation',
         testing.expectEqualWithDelta(gamma2, targetPitch, 0.05, 'Incorrect gamma rotation in ZYX convention')
     end)
 
-testing.registerLocalTest('player pitch and yaw rotation',
+testing.registerLocalTest('rotating player with controls.pitchChange and controls.yawChange should change rotation',
     function()
         local targetPitch = math.rad(-30)
         local targetYaw = math.rad(-60)
@@ -100,7 +100,7 @@ testing.registerLocalTest('player pitch and yaw rotation',
         testing.expectEqualWithDelta(gamma2, math.rad(-16), 0.05, 'Incorrect gamma rotation in ZYX convention')
     end)
 
-testing.registerLocalTest('player rotation',
+testing.registerLocalTest('rotating player should not lead to nan rotation',
     function()
         local rotation = math.sqrt(2)
         local endTime = core.getSimulationTime() + 3
@@ -254,6 +254,26 @@ testing.registerLocalTest('findNearestNavMeshPosition',
             'Navigation mesh position ' .. testing.formatActualExpected(result, expected))
     end)
 
+testing.registerLocalTestStep('camera.getFocusRay should report the object under the crosshair',
+    function()
+        local target = nil
+        for _, actor in ipairs(nearby.actors) do
+            if actor.id ~= self.id and (actor.position - self.position):length() < 200 then
+                target = actor
+            end
+        end
+        testing.expect(target, 'An NPC should stand ahead of the player')
+
+        local ray = camera.getFocusRay()
+        testing.expect(ray.hit, 'Focus ray should hit the NPC ahead')
+        testing.expect(ray.hitObject, 'Focus ray should report the NPC it hits')
+        testing.expectEqual(ray.hitObject.id, target.id, 'Focus ray should hit the NPC ahead')
+        testing.expectLessOrEqual((ray.hitPos - target.position):length(), 200,
+            'Focus ray hit position ' .. testing.formatActualExpected(ray.hitPos, target.position))
+        testing.expectGreaterThan((ray.hitPos - self.position):length(), 50,
+            'Focus ray hit position ' .. testing.formatActualExpected(ray.hitPos, self.position))
+    end)
+
 testing.registerLocalTest('player memory limit',
     function()
         local ok, err = pcall(function()
@@ -266,7 +286,7 @@ testing.registerLocalTest('player memory limit',
         testing.expectEqual(err, 'not enough memory')
     end)
 
-testing.registerLocalTest('player weapon attack',
+testing.registerLocalTestStep('player approaches and attacks a creature',
     function()
         camera.setMode(camera.MODE.ThirdPerson)
 
@@ -374,6 +394,74 @@ testing.registerLocalTest('player weapon attack',
         for k, v in pairs(types.Actor.stats.attributes) do
             v(self).base = attributes[k]
         end
+    end)
+
+testing.registerLocalTestStep('equipped weapon damages a stationary target',
+    function(targetActor)
+        camera.setMode(camera.MODE.ThirdPerson)
+        self.controls.movement = 0
+        self.controls.sideMovement = 0
+        self.controls.use = self.ATTACK_TYPE.NoAttack
+
+        local attributes = types.Actor.stats.attributes
+        local strength = attributes.strength(self).base
+        local agility = attributes.agility(self).base
+        attributes.strength(self).base = 1000
+        attributes.agility(self).base = 1000
+
+        local weaponId = 'basic_dagger1h'
+        local setupDeadline = core.getRealTime() + 10
+        local weapon
+        while weapon == nil do
+            testing.expectLessOrEqual(core.getRealTime(), setupDeadline, 'Attack setup timed out')
+            weapon = types.Actor.inventory(self):find(weaponId)
+            coroutine.yield()
+        end
+
+        types.Actor.setEquipment(self, {[types.Actor.EQUIPMENT_SLOT.CarriedRight] = weapon})
+        types.Actor.setStance(self, types.Actor.STANCE.Weapon)
+
+        while not targetActor:isValid()
+            or not types.Actor.isOnGround(self)
+            or not types.Actor.isOnGround(targetActor)
+            or types.Actor.getEquipment(self, types.Actor.EQUIPMENT_SLOT.CarriedRight) ~= weapon
+            or types.Actor.getStance(self) ~= types.Actor.STANCE.Weapon do
+            testing.expectLessOrEqual(core.getRealTime(), setupDeadline, 'Attack setup timed out')
+            coroutine.yield()
+        end
+
+        local previousHealth = types.Actor.stats.dynamic.health(targetActor).current
+        local endTime = core.getSimulationTime() + 10
+        local nextTime = 0
+        local use = self.ATTACK_TYPE.NoAttack
+        while types.Actor.stats.dynamic.health(targetActor).current >= previousHealth do
+            local time = core.getSimulationTime()
+            testing.expectLessOrEqual(time, endTime, 'Attack did not damage the target')
+            testing.expectLessOrEqual((targetActor.position - self.position):length(), 100, 'Target left melee reach')
+
+            if nextTime < time then
+                if use == self.ATTACK_TYPE.NoAttack then
+                    use = self.ATTACK_TYPE.Any
+                    nextTime = time + 0.5
+                else
+                    use = self.ATTACK_TYPE.NoAttack
+                end
+            end
+            self.controls.use = use
+
+            local halfExtents = types.Actor.getPathfindingAgentBounds(targetActor).halfExtents
+            local destination = targetActor.position - util.vector3(0, 0, halfExtents.z)
+            local direction = destination - self.position
+            direction = direction:normalize()
+            self.controls.yawChange = util.normalizeAngle(math.atan2(direction.x, direction.y) - self.rotation:getYaw())
+            self.controls.pitchChange = util.normalizeAngle(math.asin(util.clamp(-direction.z, -1, 1)) - self.rotation:getPitch())
+
+            coroutine.yield()
+        end
+
+        self.controls.use = self.ATTACK_TYPE.NoAttack
+        attributes.strength(self).base = strength
+        attributes.agility(self).base = agility
     end)
 
 return {

@@ -32,12 +32,15 @@
 #include "../mwgui/postprocessorhud.hpp"
 
 #include "distortion.hpp"
+#include "opaqueblit.hpp"
 #include "pingpongcull.hpp"
 #include "renderbin.hpp"
 #include "renderingmanager.hpp"
 #include "sky.hpp"
 #include "transparentpass.hpp"
 #include "vismask.hpp"
+#include "water.hpp"
+#include "waterawaretransparentbin.hpp"
 
 namespace
 {
@@ -141,7 +144,6 @@ namespace MWRender
         mHUDCamera->setAllowEventFocus(false);
         mHUDCamera->setViewport(0, 0, mWidth, mHeight);
         mHUDCamera->setNodeMask(Mask_RenderToTexture);
-        mHUDCamera->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
         mHUDCamera->getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
         mHUDCamera->addChild(mCanvases[0]);
         mHUDCamera->addChild(mCanvases[1]);
@@ -152,7 +154,16 @@ namespace MWRender
         mTransparentDepthPostPass
             = new TransparentDepthBinCallback(mRendering.getResourceSystem()->getSceneManager()->getShaderManager(),
                 Settings::postProcessing().mTransparentPostpass);
-        osgUtil::RenderBin::getRenderBinPrototype("DepthSortedBin")->setDrawCallback(mTransparentDepthPostPass);
+        mOpaqueColorResolve = new OpaqueColorBinCallback;
+        osg::ref_ptr<osgUtil::RenderBin> opaqueResolveBin
+            = new osgUtil::RenderBin(osgUtil::RenderBin::SORT_FRONT_TO_BACK);
+        opaqueResolveBin->setDrawCallback(mOpaqueColorResolve);
+        osgUtil::RenderBin::addRenderBinPrototype("OpaqueResolve", opaqueResolveBin);
+
+        osg::ref_ptr<osg::Node> opaqueResolveNode = new osg::Node;
+        opaqueResolveNode->setCullingActive(false);
+        opaqueResolveNode->getOrCreateStateSet()->setRenderBinDetails(RenderBin_OpaqueResolve, "OpaqueResolve");
+        rootNode->addChild(opaqueResolveNode);
 
         osg::ref_ptr<osgUtil::RenderBin> distortionRenderBin
             = new osgUtil::RenderBin(osgUtil::RenderBin::SORT_BACK_TO_FRONT);
@@ -221,6 +232,15 @@ namespace MWRender
 
         if (mUsePostProcessing)
             enable();
+    }
+
+    void PostProcessor::setupTransparentBin(const Water* water)
+    {
+        mTransparentDepthPostPass->setWater(water);
+        osg::ref_ptr<WaterAwareTransparentBin> transparentBin
+            = new WaterAwareTransparentBin(mOpaqueColorResolve, water);
+        transparentBin->setDrawCallback(mTransparentDepthPostPass);
+        osgUtil::RenderBin::addRenderBinPrototype("DepthSortedBin", transparentBin);
     }
 
     PostProcessor::~PostProcessor()
@@ -306,6 +326,9 @@ namespace MWRender
         mTransparentDepthPostPass->mFbo[frameId] = mFbos[frameId][FBO_Primary];
         mTransparentDepthPostPass->mMsaaFbo[frameId] = mFbos[frameId][FBO_Multisample];
         mTransparentDepthPostPass->mOpaqueFbo[frameId] = mFbos[frameId][FBO_OpaqueDepth];
+        mOpaqueColorResolve->mFbo[frameId] = mFbos[frameId][FBO_Primary];
+        mOpaqueColorResolve->mMsaaFbo[frameId] = mFbos[frameId][FBO_Multisample];
+        mOpaqueColorResolve->mOpaqueFbo[frameId] = mFbos[frameId][FBO_OpaqueDepth];
 
         mDistortionCallback->setFBO(mFbos[frameId][FBO_Distortion], frameId);
         mDistortionCallback->setOriginalFBO(mFbos[frameId][FBO_Primary], frameId);
@@ -462,8 +485,11 @@ namespace MWRender
             texture->dirtyTextureObject();
         }
 
+        // f16 normals: u8 isn't quite accurate enough even for opaque objects, but now we also
+        //  need to blend terrain normals, and it's additive, so now u8 rounding losses would pile up.
         textures[Tex_Normal]->setSourceFormat(GL_RGB);
-        textures[Tex_Normal]->setInternalFormat(GL_RGB);
+        textures[Tex_Normal]->setSourceType(GL_HALF_FLOAT);
+        textures[Tex_Normal]->setInternalFormat(GL_RGB16F);
 
         textures[Tex_Distortion]->setSourceFormat(GL_RGB);
         textures[Tex_Distortion]->setInternalFormat(GL_RGB);
@@ -476,11 +502,14 @@ namespace MWRender
             tex->setSourceFormat(GL_DEPTH_STENCIL_EXT);
             tex->setSourceType(SceneUtil::AutoDepth::depthSourceType());
             tex->setInternalFormat(SceneUtil::AutoDepth::depthInternalFormat());
+            tex->setFilter(osg::Texture2D::MIN_FILTER, osg::Texture::NEAREST);
+            tex->setFilter(osg::Texture2D::MAG_FILTER, osg::Texture::NEAREST);
         };
 
         setupDepth(textures[Tex_Depth]);
         setupDepth(textures[Tex_OpaqueDepth]);
         textures[Tex_OpaqueDepth]->setName("opaqueTexMap");
+        textures[Tex_OpaqueColor]->setName("opaqueTexColorMap");
 
         auto& fbos = mFbos[frameId];
 
@@ -537,17 +566,12 @@ namespace MWRender
         fbos[FBO_OpaqueDepth] = new osg::FrameBufferObject;
         fbos[FBO_OpaqueDepth]->setAttachment(osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER,
             Stereo::createMultiviewCompatibleAttachment(textures[Tex_OpaqueDepth]));
+        fbos[FBO_OpaqueDepth]->setAttachment(osg::FrameBufferObject::BufferComponent::COLOR_BUFFER0,
+            Stereo::createMultiviewCompatibleAttachment(textures[Tex_OpaqueColor]));
 
         fbos[FBO_Distortion] = new osg::FrameBufferObject;
         fbos[FBO_Distortion]->setAttachment(osg::FrameBufferObject::BufferComponent::COLOR_BUFFER0,
             Stereo::createMultiviewCompatibleAttachment(textures[Tex_Distortion]));
-
-#ifdef __APPLE__
-        if (textures[Tex_OpaqueDepth])
-            fbos[FBO_OpaqueDepth]->setAttachment(osg::FrameBufferObject::BufferComponent::COLOR_BUFFER,
-                osg::FrameBufferAttachment(new osg::RenderBuffer(textures[Tex_OpaqueDepth]->getTextureWidth(),
-                    textures[Tex_OpaqueDepth]->getTextureHeight(), textures[Tex_Scene]->getInternalFormat())));
-#endif
 
         mCanvases[frameId]->dirty();
     }
@@ -647,7 +671,9 @@ namespace MWRender
 
                 if (!pass->getTarget().empty())
                 {
-                    auto& renderTarget = technique->getRenderTargetsMap()[pass->getTarget()];
+                    // FIXME: https://gitlab.com/OpenMW/openmw/-/work_items/9034
+                    std::string target = pass->getTarget();
+                    auto& renderTarget = technique->getRenderTargetsMap()[target];
                     subPass.mSize = renderTarget.mSize;
                     subPass.mRenderTexture = renderTarget.mTarget;
                     subPass.mMipMap = renderTarget.mMipMap;
@@ -711,7 +737,8 @@ namespace MWRender
         if (auto hud = MWBase::Environment::get().getWindowManager()->getPostProcessorHud())
             hud->updateTechniques();
 
-        mRendering.getSkyManager()->setSunglare(sunglare);
+        if (mUsePostProcessing)
+            mRendering.getSkyManager()->setSunglare(sunglare);
 
         if (dirtyAttachments)
             mCanvases[frameId]->setDirtyAttachments(attachmentsToDirty);

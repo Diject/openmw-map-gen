@@ -8,10 +8,9 @@
 #include <osg/FrameBufferObject>
 #include <osg/Node>
 #include <osg/NodeVisitor>
-#include <osg/TexEnvCombine>
-#include <osg/TexGen>
 #include <osgUtil/CullVisitor>
 #include <osgUtil/RenderStage>
+#include <osgViewer/Renderer>
 
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -84,21 +83,6 @@ namespace SceneUtil
             removeTexture(stateset);
         else
         {
-            stateset->setTextureMode(mTexUnit, GL_TEXTURE_2D, osg::StateAttribute::ON);
-            osg::TexGen* texGen = new osg::TexGen;
-            texGen->setMode(osg::TexGen::SPHERE_MAP);
-
-            stateset->setTextureAttributeAndModes(
-                mTexUnit, texGen, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
-
-            osg::TexEnvCombine* texEnv = new osg::TexEnvCombine;
-            texEnv->setSource0_RGB(osg::TexEnvCombine::CONSTANT);
-            texEnv->setConstantColor(mColor);
-            texEnv->setCombine_RGB(osg::TexEnvCombine::INTERPOLATE);
-            texEnv->setSource2_RGB(osg::TexEnvCombine::TEXTURE);
-            texEnv->setOperand2_RGB(osg::TexEnvCombine::SRC_COLOR);
-
-            stateset->setTextureAttributeAndModes(mTexUnit, texEnv, osg::StateAttribute::ON);
             stateset->addUniform(new osg::Uniform("envMapColor", mColor));
         }
     }
@@ -106,9 +90,6 @@ namespace SceneUtil
     void GlowUpdater::removeTexture(osg::StateSet* stateset)
     {
         stateset->removeTextureAttribute(mTexUnit, osg::StateAttribute::TEXTURE);
-        stateset->removeTextureAttribute(mTexUnit, osg::StateAttribute::TEXGEN);
-        stateset->removeTextureAttribute(mTexUnit, osg::StateAttribute::TEXENV);
-        stateset->removeTextureMode(mTexUnit, GL_TEXTURE_2D);
         stateset->removeUniform("envMapColor");
 
         osg::StateSet::TextureAttributeList& list = stateset->getTextureAttributeList();
@@ -248,8 +229,8 @@ namespace SceneUtil
             writableStateSet = new osg::StateSet(*node->getStateSet(), osg::CopyOp::SHALLOW_COPY);
             node->setStateSet(writableStateSet);
         }
-        writableStateSet->setTextureAttributeAndModes(texUnit, textures.front(), osg::StateAttribute::ON);
-        writableStateSet->setTextureAttributeAndModes(texUnit, new TextureType("envMap"), osg::StateAttribute::ON);
+        writableStateSet->setTextureAttribute(texUnit, textures.front(), osg::StateAttribute::ON);
+        writableStateSet->setTextureAttribute(texUnit, new TextureType("envMap"), osg::StateAttribute::ON);
         writableStateSet->addUniform(new osg::Uniform("envMapColor", glowColor));
         resourceSystem->getSceneManager()->recreateShaders(std::move(node));
 
@@ -417,5 +398,19 @@ namespace SceneUtil
             return static_cast<const SceneUtil::TextureType*>(type)->getName();
 
         return texture.getName();
+    }
+
+    void disableFFPStateForRenderer(osgViewer::Renderer* renderer)
+    {
+        auto disableFFPState = [](osgUtil::SceneView* sceneView) {
+            sceneView->setDefaults(osgUtil::SceneView::NO_SCENEVIEW_LIGHT);
+            sceneView->getGlobalStateSet()->removeMode(GL_LIGHT0);
+            sceneView->getGlobalStateSet()->removeAttribute(osg::StateAttribute::LIGHTMODEL);
+            sceneView->getGlobalStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
+            sceneView->getGlobalStateSet()->removeAttribute(osg::StateAttribute::ALPHAFUNC);
+        };
+
+        disableFFPState(renderer->getSceneView(0));
+        disableFFPState(renderer->getSceneView(1));
     }
 }

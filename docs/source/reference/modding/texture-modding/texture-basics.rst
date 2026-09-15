@@ -10,10 +10,6 @@ cracks and other small details.
 
 `Specular mapping`_ is used to vary the shininess/specularity along the surface of an object.
 
-The prerequisite to using these techniques are
-`shaders <https://en.wikipedia.org/wiki/Shader>`_.
-OpenMW automatically uses shaders for objects with these mapping techniques.
-
 Normal Mapping
 ##############
 
@@ -42,7 +38,7 @@ Specular Mapping
 The RGB channels of the specular map are used as the specular color.
 The alpha channel specifies shininess in range [0, 255].
 If a specular map is used, it will override the shininess and specular color
-set in the NiMaterialProperty / osg::Material.
+set in the NiMaterialProperty / SceneUtil::Material.
 
 Morrowind format NIF files do not support normal maps or specular maps.
 In order to use them anyway, see the next section.
@@ -80,7 +76,7 @@ The above settings are not enabled by default to prevent incompatibilities
 with mods that may be inadvertently using these naming schemes.
 
 On the topic of shader settings,
-you may be interested in these three settings as well: :ref:`force shaders`,
+you may be interested in these two settings as well:
 :ref:`force per pixel lighting`, and :ref:`clamp lighting`.
 In particular, `clamp lighting = false` makes normal maps look much better!
 

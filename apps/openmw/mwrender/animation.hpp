@@ -18,6 +18,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -119,7 +120,7 @@ namespace MWRender
 
         void setTextKeyListener(TextKeyListener* listener);
 
-        virtual bool updateCarriedLeftVisible(const int weaptype) const { return false; }
+        virtual bool updateCarriedLeftVisible(ESM::RefId weaptype) const { return false; }
 
         typedef std::unordered_map<std::string, osg::ref_ptr<osg::MatrixTransform>, Misc::StringUtils::CiHash,
             Misc::StringUtils::CiEqual>
@@ -167,7 +168,9 @@ namespace MWRender
 
             std::string mGroupname;
             std::string mStartKey;
+            std::string mStopKey;
 
+            float getCompletion() const;
             float getTime() const { return *mTime; }
             void setTime(float time) { *mTime = time; }
             bool blendMaskContains(size_t blendMask) const { return (mBlendMask & (1 << blendMask)); }
@@ -238,6 +241,7 @@ namespace MWRender
         osg::ref_ptr<SceneUtil::LightSource> mExtraLightSource;
 
         float mAlpha;
+        float mActorFade;
 
         mutable std::map<std::string, float, std::less<>> mAnimVelocities;
 
@@ -288,11 +292,11 @@ namespace MWRender
         /** Adds the keyframe controllers in the specified model as a new animation source.
          * @note Later added animation sources have the highest priority when it comes to finding a particular
          * animation.
-         * @param model The file to add the keyframes for. Note that the .nif file extension will be replaced with .kf.
+         * @param kfname The file to add the keyframes for. Note that the .nif file extension will be replaced with .kf.
          * @param baseModel The filename of the mObjectRoot, only used for error messages.
          */
         void addAnimSource(std::string_view model, const std::string& baseModel);
-        std::shared_ptr<AnimSource> addSingleAnimSource(const std::string& model, const std::string& baseModel);
+        std::shared_ptr<AnimSource> addSingleAnimSource(VFS::Path::NormalizedView kfname, const std::string& baseModel);
 
         /** Adds an additional light to the given node using the specified ESM record. */
         void addExtraLight(osg::ref_ptr<osg::Group> parent, const SceneUtil::LightCommon& light);
@@ -314,6 +318,8 @@ namespace MWRender
             std::map<osg::ref_ptr<osg::Node>, osg::ref_ptr<ControllerType>>& blendControllers,
             const AnimBlendStateData& stateData, const osg::ref_ptr<const SceneUtil::AnimBlendRules>& blendRules,
             const AnimState& active);
+
+        void animationEnded(AnimState& state) const;
 
     public:
         Animation(
@@ -343,12 +349,14 @@ namespace MWRender
          *              you need to remove it manually using removeEffect when the effect should end.
          * @param bonename Bone to attach to, or empty string to use the scene node instead
          * @param texture override the texture specified in the model's materials - if empty, do not override
-         * @param useAmbientLight attach white ambient light to the root VFX node of the scenegraph (Morrowind
-         * default)
+         * @param useAmbientLight attach white ambient light to the root VFX node of the scenegraph (Morrowind default)
+         * @param autoTransform auto-calculate vfx transform
+         * @param transform apply a relative transform
          * @note Will not add an effect twice.
          */
         void addEffect(std::string_view model, std::string_view effectId, bool loop = false,
-            std::string_view bonename = {}, std::string_view texture = {}, bool useAmbientLight = true);
+            std::string_view bonename = {}, std::string_view texture = {}, bool useAmbientLight = true,
+            bool autoTransform = true, const std::optional<osg::Matrix>& transform = std::nullopt);
 
         void removeEffect(std::string_view effectId);
         void removeEffects();
@@ -458,12 +466,11 @@ namespace MWRender
         virtual void showCarriedLeft(bool show) {}
         virtual void setWeaponGroup(const std::string& group, bool relativeDuration) {}
         virtual void setVampire(bool vampire) {}
-        /// A value < 1 makes the animation translucent, 1.f = fully opaque
-        void setAlpha(float alpha);
+        void setAlpha(float actorFade, float alpha);
         virtual void setPitchFactor(float factor) {}
         virtual void attachArrow() {}
         virtual void detachArrow() {}
-        virtual void releaseArrow(float attackStrength) {}
+        virtual void releaseArrow(float attackStrength, float attackWindUp) {}
         virtual void enableHeadAnimation(bool enable) {}
         // TODO: move outside of this class
         /// Makes this object glow, by placing a Light in its center.

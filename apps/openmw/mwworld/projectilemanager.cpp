@@ -9,6 +9,8 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include <components/esm3/actoridconverter.hpp>
+#include <components/esm3/esmreader.hpp>
 #include <components/esm3/esmwriter.hpp>
 #include <components/esm3/loadench.hpp>
 #include <components/esm3/loadmgef.hpp>
@@ -36,8 +38,10 @@
 #include "../mwworld/esmstore.hpp"
 #include "../mwworld/inventorystore.hpp"
 #include "../mwworld/manualref.hpp"
+#include "../mwworld/worldmodel.hpp"
 
 #include "../mwbase/environment.hpp"
+#include "../mwbase/luamanager.hpp"
 #include "../mwbase/soundmanager.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
@@ -46,7 +50,6 @@
 #include "../mwmechanics/combat.hpp"
 #include "../mwmechanics/creaturestats.hpp"
 #include "../mwmechanics/spellcasting.hpp"
-#include "../mwmechanics/weapontype.hpp"
 
 #include "../mwrender/animation.hpp"
 #include "../mwrender/renderingmanager.hpp"
@@ -61,7 +64,7 @@
 namespace
 {
     ESM::EffectList getMagicBoltData(std::vector<ESM::RefId>& projectileIDs, std::set<ESM::RefId>& sounds, float& speed,
-        std::string& texture, std::string& sourceName, const ESM::RefId& id)
+        VFS::Path::NormalizedView& texture, std::string& sourceName, const ESM::RefId& id)
     {
         const MWWorld::ESMStore& esmStore = *MWBase::Environment::get().getESMStore();
         const ESM::EffectList* effects;
@@ -120,7 +123,7 @@ namespace
             const ESM::MagicEffect* magicEffect
                 = MWBase::Environment::get().getESMStore()->get<ESM::MagicEffect>().find(
                     effects->mList.begin()->mData.mEffectID);
-            texture = magicEffect->mParticle;
+            texture = magicEffect->mParticle.getNormalized();
         }
 
         // insert a VFX_Multiple projectile if there are multiple projectile effects
@@ -148,6 +151,29 @@ namespace
         lightDiffuseColor /= static_cast<float>(numberOfEffects);
 
         return lightDiffuseColor;
+    }
+
+    osg::Quat lookAt(const osg::Vec3f& pos)
+    {
+        // Rotate the forward vector towards the position (used for gravity-affected projectiles)
+        // Can't use Quat::makeRotate as the shortest angle contains undesirable local roll
+        const float dist = pos.length();
+        if (dist < 1e-4f)
+            return {};
+
+        const osg::Vec3f dir = pos / dist;
+        osg::Vec3f right = dir ^ osg::Z_AXIS;
+        if (right.normalize() < 1e-4f)
+            right = osg::X_AXIS;
+
+        const osg::Vec3f up = right ^ dir;
+
+        osg::Matrixf mat(right.x(), right.y(), right.z(), 0.f, dir.x(), dir.y(), dir.z(), 0.f, up.x(), up.y(), up.z(),
+            0.f, 0.f, 0.f, 0.f, 1.f);
+
+        osg::Quat orient;
+        orient.set(mat);
+        return orient;
     }
 }
 
@@ -190,7 +216,8 @@ namespace MWWorld
     };
 
     void ProjectileManager::createModel(State& state, VFS::Path::NormalizedView model, const osg::Vec3f& pos,
-        const osg::Quat& orient, bool rotate, bool createLight, osg::Vec4 lightDiffuseColor, const std::string& texture)
+        const osg::Quat& orient, bool rotate, bool createLight, osg::Vec4 lightDiffuseColor,
+        VFS::Path::NormalizedView texture)
     {
         state.mNode = new osg::PositionAttitudeTransform;
         state.mNode->setNodeMask(MWRender::Mask_Effect);
@@ -222,14 +249,13 @@ namespace MWWorld
                 attachTo->accept(findVisitor);
                 if (findVisitor.mFoundNode)
                     mResourceSystem->getSceneManager()->getInstance(
-                        Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(weapon->mModel)),
-                        findVisitor.mFoundNode);
+                        Misc::ResourceHelpers::correctMeshPath(weapon->mModel.getNormalized()), findVisitor.mFoundNode);
             }
         }
 
         if (createLight)
         {
-            osg::ref_ptr<osg::Light> projectileLight(new osg::Light);
+            osg::ref_ptr<SceneUtil::Light> projectileLight(new SceneUtil::Light);
             projectileLight->setAmbient(osg::Vec4(1.0f, 1.0f, 1.0f, 1.0f));
             projectileLight->setDiffuse(lightDiffuseColor);
             projectileLight->setSpecular(osg::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -255,7 +281,7 @@ namespace MWWorld
         SceneUtil::AssignControllerSourcesVisitor assignVisitor(state.mEffectAnimationTime);
         state.mNode->accept(assignVisitor);
 
-        MWRender::overrideFirstRootTexture(VFS::Path::toNormalized(texture), mResourceSystem, *projectile);
+        MWRender::overrideFirstRootTexture(texture, mResourceSystem, *projectile);
     }
 
     void ProjectileManager::update(State& state, float duration)
@@ -289,12 +315,10 @@ namespace MWWorld
         state.mSpellId = spellId;
         state.mCasterHandle = caster;
         state.mItem = item;
-        if (caster.getClass().isActor())
-            state.mActorId = caster.getClass().getCreatureStats(caster).getActorId();
-        else
-            state.mActorId = -1;
+        MWBase::Environment::get().getWorldModel()->registerPtr(caster);
+        state.mCaster = caster.getCellRef().getRefNum();
 
-        std::string texture;
+        VFS::Path::NormalizedView texture;
 
         state.mEffects = getMagicBoltData(
             state.mIdMagic, state.mSoundIds, state.mSpeed, texture, state.mSourceName, state.mSpellId);
@@ -309,7 +333,8 @@ namespace MWWorld
             return;
         }
 
-        MWWorld::ManualRef ref(*MWBase::Environment::get().getESMStore(), state.mIdMagic.at(0));
+        const MWWorld::ESMStore& esmStore = *MWBase::Environment::get().getESMStore();
+        MWWorld::ManualRef ref(esmStore, state.mIdMagic.at(0));
         MWWorld::Ptr ptr = ref.getPtr();
 
         osg::Vec4 lightDiffuseColor = getMagicBoltLightDiffuseColor(state.mEffects);
@@ -330,8 +355,8 @@ namespace MWWorld
         // shape
         if (state.mIdMagic.size() > 1)
         {
-            model = Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(
-                MWBase::Environment::get().getESMStore()->get<ESM::Weapon>().find(state.mIdMagic[1])->mModel));
+            model = Misc::ResourceHelpers::correctMeshPath(
+                esmStore.get<ESM::Weapon>().find(state.mIdMagic[1])->mModel.getNormalized());
         }
         state.mProjectileId = mPhysics->addProjectile(caster, pos, model, true);
         state.mToDelete = false;
@@ -339,17 +364,16 @@ namespace MWWorld
     }
 
     void ProjectileManager::launchProjectile(const Ptr& actor, const ConstPtr& projectile, const osg::Vec3f& pos,
-        const osg::Quat& orient, const Ptr& bow, float speed, float attackStrength)
+        const osg::Quat& orient, const Ptr& bow, float speed, float attackStrength, float attackWindUp)
     {
         ProjectileState state;
-        state.mActorId = actor.getClass().getCreatureStats(actor).getActorId();
+        state.mCaster = actor.getCellRef().getRefNum();
         state.mBowId = bow.getCellRef().getRefId();
         state.mVelocity = orient * osg::Vec3f(0, 1, 0) * speed;
         state.mIdArrow = projectile.getCellRef().getRefId();
         state.mCasterHandle = actor;
         state.mAttackStrength = attackStrength;
-        int type = projectile.get<ESM::Weapon>()->mBase->mData.mType;
-        state.mThrown = MWMechanics::getWeaponType(type)->mWeaponClass == ESM::WeaponType::Thrown;
+        state.mAttackWindUp = attackWindUp;
 
         MWWorld::ManualRef ref(*MWBase::Environment::get().getESMStore(), projectile.getCellRef().getRefId());
         MWWorld::Ptr ptr = ref.getPtr();
@@ -367,24 +391,24 @@ namespace MWWorld
     void ProjectileManager::updateCasters()
     {
         for (auto& state : mProjectiles)
-            mPhysics->setCaster(state.mProjectileId, state.getCaster());
+        {
+            state.mCasterHandle = state.getCaster();
+            mPhysics->setCaster(state.mProjectileId, state.mCasterHandle);
+        }
 
         for (auto& state : mMagicBolts)
         {
-            // casters are identified by actor id in the savegame. objects doesn't have one so they can't be identified
-            // back.
-            // TODO: should object-type caster be restored from savegame?
-            if (state.mActorId == -1)
+            if (!state.mCaster.isSet())
                 continue;
 
-            auto caster = state.getCaster();
-            if (caster.isEmpty())
+            state.mCasterHandle = state.getCaster();
+            if (state.mCasterHandle.isEmpty())
             {
-                Log(Debug::Error) << "Couldn't find caster with ID " << state.mActorId;
+                Log(Debug::Error) << "Couldn't find caster with ID " << state.mCaster;
                 cleanupMagicBolt(state);
                 continue;
             }
-            mPhysics->setCaster(state.mProjectileId, caster);
+            mPhysics->setCaster(state.mProjectileId, state.mCasterHandle);
         }
     }
 
@@ -492,14 +516,7 @@ namespace MWWorld
 
             projectile->setVelocity(projectileState.mVelocity);
 
-            // rotation does not work well for throwing projectiles - their roll angle will depend on shooting
-            // direction.
-            if (!projectileState.mThrown)
-            {
-                osg::Quat orient;
-                orient.makeRotate(osg::Vec3f(0, 1, 0), projectileState.mVelocity);
-                projectileState.mNode->setAttitude(orient);
-            }
+            projectileState.mNode->setAttitude(lookAt(projectileState.mVelocity));
 
             update(projectileState, duration);
 
@@ -552,11 +569,11 @@ namespace MWWorld
             if (projectile->getHitWater())
                 mRendering->emitWaterRipple(hitPosition);
 
-            MWMechanics::projectileHit(
-                caster, target, bow, projectileRef.getPtr(), hitPosition, projectileState.mAttackStrength);
+            MWMechanics::projectileHit(caster, target, bow, projectileRef.getPtr(), hitPosition,
+                projectileState.mAttackStrength, projectileState.mAttackWindUp);
             projectileState.mToDelete = true;
         }
-        const MWWorld::ESMStore& esmStore = *MWBase::Environment::get().getESMStore();
+
         for (auto& magicBoltState : mMagicBolts)
         {
             if (magicBoltState.mToDelete)
@@ -580,22 +597,19 @@ namespace MWWorld
 
             assert(target != caster);
 
-            MWMechanics::CastSpell cast(caster, target);
-            cast.mHitPosition = !active ? Misc::Convert::makeOsgVec3f(projectile->getHitPosition()) : pos;
-            cast.mId = magicBoltState.mSpellId;
-            cast.mSourceName = magicBoltState.mSourceName;
-            cast.mItem = magicBoltState.mItem;
-            // Grab original effect list so the indices are correct
-            const ESM::EffectList* effects;
-            if (const ESM::Spell* spell = esmStore.get<ESM::Spell>().search(magicBoltState.mSpellId))
-                effects = &spell->mEffects;
-            else
+            auto hitPos = !active ? Misc::Convert::makeOsgVec3f(projectile->getHitPosition()) : pos;
+            auto hitNormal = Misc::Convert::makeOsgVec3f(projectile->getHitNormal());
+
+            if (projectile->getHitWater())
+                mRendering->emitWaterRipple(hitPos);
+
+            if (active)
             {
-                MWWorld::ManualRef ref(esmStore, magicBoltState.mSpellId);
-                const MWWorld::Ptr& ptr = ref.getPtr();
-                effects = &esmStore.get<ESM::Enchantment>().find(ptr.getClass().getEnchantment(ptr))->mEffects;
+                hitNormal = projectile->velocity();
+                hitNormal.normalize();
             }
-            cast.inflict(target, *effects, ESM::RT_Target);
+            MWBase::Environment::get().getLuaManager()->magicProjectileHit(
+                magicBoltState.mSpellId, caster, magicBoltState.mItem, target, hitPos, hitNormal);
 
             magicBoltState.mToDelete = true;
         }
@@ -650,37 +664,38 @@ namespace MWWorld
 
     void ProjectileManager::write(ESM::ESMWriter& writer, Loading::Listener& progress) const
     {
-        for (std::vector<ProjectileState>::const_iterator it = mProjectiles.begin(); it != mProjectiles.end(); ++it)
+        for (const ProjectileState& projectile : mProjectiles)
         {
             writer.startRecord(ESM::REC_PROJ);
 
             ESM::ProjectileState state;
-            state.mId = it->mIdArrow;
-            state.mPosition = ESM::Vector3(osg::Vec3f(it->mNode->getPosition()));
-            state.mOrientation = ESM::Quaternion(osg::Quat(it->mNode->getAttitude()));
-            state.mActorId = it->mActorId;
+            state.mId = projectile.mIdArrow;
+            state.mPosition = ESM::Vector3(osg::Vec3f(projectile.mNode->getPosition()));
+            state.mOrientation = ESM::Quaternion(osg::Quat(projectile.mNode->getAttitude()));
+            state.mCaster = projectile.mCaster;
 
-            state.mBowId = it->mBowId;
-            state.mVelocity = it->mVelocity;
-            state.mAttackStrength = it->mAttackStrength;
+            state.mBowId = projectile.mBowId;
+            state.mVelocity = projectile.mVelocity;
+            state.mAttackStrength = projectile.mAttackStrength;
+            state.mAttackWindUp = projectile.mAttackWindUp;
 
             state.save(writer);
 
             writer.endRecord(ESM::REC_PROJ);
         }
 
-        for (std::vector<MagicBoltState>::const_iterator it = mMagicBolts.begin(); it != mMagicBolts.end(); ++it)
+        for (const MagicBoltState& bolt : mMagicBolts)
         {
             writer.startRecord(ESM::REC_MPRJ);
 
             ESM::MagicBoltState state;
-            state.mId = it->mIdMagic.at(0);
-            state.mPosition = ESM::Vector3(osg::Vec3f(it->mNode->getPosition()));
-            state.mOrientation = ESM::Quaternion(osg::Quat(it->mNode->getAttitude()));
-            state.mActorId = it->mActorId;
-            state.mItem = it->mItem;
-            state.mSpellId = it->mSpellId;
-            state.mSpeed = it->mSpeed;
+            state.mId = bolt.mIdMagic.at(0);
+            state.mPosition = ESM::Vector3(osg::Vec3f(bolt.mNode->getPosition()));
+            state.mOrientation = ESM::Quaternion(osg::Quat(bolt.mNode->getAttitude()));
+            state.mCaster = bolt.mCaster;
+            state.mItem = bolt.mItem;
+            state.mSpellId = bolt.mSpellId;
+            state.mSpeed = bolt.mSpeed;
 
             state.save(writer);
 
@@ -696,11 +711,12 @@ namespace MWWorld
             esm.load(reader);
 
             ProjectileState state;
-            state.mActorId = esm.mActorId;
+            state.mCaster = esm.mCaster;
             state.mBowId = esm.mBowId;
             state.mVelocity = esm.mVelocity;
             state.mIdArrow = esm.mId;
             state.mAttackStrength = esm.mAttackStrength;
+            state.mAttackWindUp = esm.mAttackWindUp;
             state.mToDelete = false;
 
             VFS::Path::Normalized model;
@@ -709,8 +725,6 @@ namespace MWWorld
                 MWWorld::ManualRef ref(*MWBase::Environment::get().getESMStore(), esm.mId);
                 MWWorld::Ptr ptr = ref.getPtr();
                 model = ptr.getClass().getCorrectedModel(ptr);
-                int weaponType = ptr.get<ESM::Weapon>()->mBase->mData.mType;
-                state.mThrown = MWMechanics::getWeaponType(weaponType)->mWeaponClass == ESM::WeaponType::Thrown;
 
                 state.mProjectileId
                     = mPhysics->addProjectile(state.getCaster(), osg::Vec3f(esm.mPosition), model, false);
@@ -736,10 +750,10 @@ namespace MWWorld
             MagicBoltState state;
             state.mIdMagic.push_back(esm.mId);
             state.mSpellId = esm.mSpellId;
-            state.mActorId = esm.mActorId;
+            state.mCaster = esm.mCaster;
             state.mToDelete = false;
             state.mItem = esm.mItem;
-            std::string texture;
+            VFS::Path::NormalizedView texture;
 
             try
             {
@@ -798,12 +812,24 @@ namespace MWWorld
         return mMagicBolts.size() + mProjectiles.size();
     }
 
+    void ProjectileManager::saveLoaded(const ESM::ESMReader& reader)
+    {
+        // Can't do this in readRecord because the vectors might get reallocated as they grow
+        if (reader.mActorIdConverter)
+        {
+            for (ProjectileState& projectile : mProjectiles)
+                reader.mActorIdConverter->convert(projectile.mCaster, projectile.mCaster.mIndex);
+            for (MagicBoltState& bolt : mMagicBolts)
+                reader.mActorIdConverter->convert(bolt.mCaster, bolt.mCaster.mIndex);
+        }
+    }
+
     MWWorld::Ptr ProjectileManager::State::getCaster()
     {
         if (!mCasterHandle.isEmpty())
             return mCasterHandle;
 
-        return MWBase::Environment::get().getWorld()->searchPtrViaActorId(mActorId);
+        return MWBase::Environment::get().getWorldModel()->getPtr(mCaster);
     }
 
 }

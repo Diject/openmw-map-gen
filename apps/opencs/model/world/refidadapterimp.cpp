@@ -13,6 +13,7 @@
 #include <components/esm3/loadmgef.hpp>
 #include <components/esm3/loadskil.hpp>
 
+#include "idcollection.hpp"
 #include "nestedtablewrapper.hpp"
 
 CSMWorld::PotionColumns::PotionColumns(const InventoryColumns& columns)
@@ -91,11 +92,6 @@ void CSMWorld::IngredientRefIdAdapter::setData(
     return;
 }
 
-CSMWorld::IngredEffectRefIdAdapter::IngredEffectRefIdAdapter()
-    : mType(UniversalId::Type_Ingredient)
-{
-}
-
 void CSMWorld::IngredEffectRefIdAdapter::addNestedRow(
     const RefIdColumn* column, RefIdData& data, int index, int position) const
 {
@@ -144,37 +140,36 @@ QVariant CSMWorld::IngredEffectRefIdAdapter::getNestedData(
     if (subRowIndex < 0 || subRowIndex >= 4)
         throw std::runtime_error("index out of range");
 
+    ESM::RefId effectId = record.get().mData.mEffectID[subRowIndex];
+    bool targetSkill = false, targetAttribute = false;
+    if (!effectId.empty())
+    {
+        int recordIndex = mMagicEffects.searchId(effectId);
+        if (recordIndex != -1)
+        {
+            const ESM::MagicEffect& mgef = mMagicEffects.getRecord(recordIndex).get();
+            targetSkill = mgef.mData.mFlags & ESM::MagicEffect::TargetSkill;
+            targetAttribute = mgef.mData.mFlags & ESM::MagicEffect::TargetAttribute;
+        }
+    }
+
     switch (subColIndex)
     {
         case 0:
-            return record.get().mData.mEffectID[subRowIndex];
+            return ESM::MagicEffect::refIdToIndex(effectId);
         case 1:
         {
-            switch (record.get().mData.mEffectID[subRowIndex])
-            {
-                case ESM::MagicEffect::DrainSkill:
-                case ESM::MagicEffect::DamageSkill:
-                case ESM::MagicEffect::RestoreSkill:
-                case ESM::MagicEffect::FortifySkill:
-                case ESM::MagicEffect::AbsorbSkill:
-                    return record.get().mData.mSkills[subRowIndex];
-                default:
-                    return QVariant();
-            }
+            if (targetSkill)
+                return ESM::Skill::refIdToIndex(record.get().mData.mSkills[subRowIndex]);
+            else
+                return QVariant();
         }
         case 2:
         {
-            switch (record.get().mData.mEffectID[subRowIndex])
-            {
-                case ESM::MagicEffect::DrainAttribute:
-                case ESM::MagicEffect::DamageAttribute:
-                case ESM::MagicEffect::RestoreAttribute:
-                case ESM::MagicEffect::FortifyAttribute:
-                case ESM::MagicEffect::AbsorbAttribute:
-                    return record.get().mData.mAttributes[subRowIndex];
-                default:
-                    return QVariant();
-            }
+            if (targetAttribute)
+                return ESM::Attribute::refIdToIndex(record.get().mData.mAttributes[subRowIndex]);
+            else
+                return QVariant();
         }
         default:
             throw std::runtime_error("Trying to access non-existing column in the nested table!");
@@ -191,36 +186,34 @@ void CSMWorld::IngredEffectRefIdAdapter::setNestedData(
     if (subRowIndex < 0 || subRowIndex >= 4)
         throw std::runtime_error("index out of range");
 
+    ESM::RefId effectId = ESM::MagicEffect::indexToRefId(value.toInt());
+    bool targetSkill = false, targetAttribute = false;
+
     switch (subColIndex)
     {
         case 0:
-            ingredient.mData.mEffectID[subRowIndex] = value.toInt();
-            switch (ingredient.mData.mEffectID[subRowIndex])
+            ingredient.mData.mEffectID[subRowIndex] = effectId;
+            if (!effectId.empty())
             {
-                case ESM::MagicEffect::DrainSkill:
-                case ESM::MagicEffect::DamageSkill:
-                case ESM::MagicEffect::RestoreSkill:
-                case ESM::MagicEffect::FortifySkill:
-                case ESM::MagicEffect::AbsorbSkill:
-                    ingredient.mData.mAttributes[subRowIndex] = -1;
-                    break;
-                case ESM::MagicEffect::DrainAttribute:
-                case ESM::MagicEffect::DamageAttribute:
-                case ESM::MagicEffect::RestoreAttribute:
-                case ESM::MagicEffect::FortifyAttribute:
-                case ESM::MagicEffect::AbsorbAttribute:
-                    ingredient.mData.mSkills[subRowIndex] = -1;
-                    break;
-                default:
-                    ingredient.mData.mSkills[subRowIndex] = -1;
-                    ingredient.mData.mAttributes[subRowIndex] = -1;
+                int recordIndex = mMagicEffects.searchId(effectId);
+                if (recordIndex != -1)
+                {
+                    const ESM::MagicEffect& mgef = mMagicEffects.getRecord(recordIndex).get();
+                    targetSkill = mgef.mData.mFlags & ESM::MagicEffect::TargetSkill;
+                    targetAttribute = mgef.mData.mFlags & ESM::MagicEffect::TargetAttribute;
+                }
             }
+
+            if (!targetSkill)
+                ingredient.mData.mSkills[subRowIndex] = ESM::RefId();
+            if (!targetAttribute)
+                ingredient.mData.mAttributes[subRowIndex] = ESM::RefId();
             break;
         case 1:
-            ingredient.mData.mSkills[subRowIndex] = value.toInt();
+            ingredient.mData.mSkills[subRowIndex] = ESM::Skill::indexToRefId(value.toInt());
             break;
         case 2:
-            ingredient.mData.mAttributes[subRowIndex] = value.toInt();
+            ingredient.mData.mAttributes[subRowIndex] = ESM::Attribute::indexToRefId(value.toInt());
             break;
         default:
             throw std::runtime_error("Trying to access non-existing column in the nested table!");
@@ -355,7 +348,7 @@ QVariant CSMWorld::BookRefIdAdapter::getData(const RefIdColumn* column, const Re
         return record.get().mData.mIsScroll;
 
     if (column == mSkill)
-        return record.get().mData.mSkillId;
+        return ESM::Skill::refIdToIndex(record.get().mData.mSkillId);
 
     if (column == mText)
         return QString::fromUtf8(record.get().mText.c_str());
@@ -374,7 +367,7 @@ void CSMWorld::BookRefIdAdapter::setData(
     if (column == mBookType)
         book.mData.mIsScroll = value.toInt();
     else if (column == mSkill)
-        book.mData.mSkillId = value.toInt();
+        book.mData.mSkillId = ESM::Skill::indexToRefId(value.toInt());
     else if (column == mText)
         book.mText = value.toString().toUtf8().data();
     else
@@ -959,8 +952,12 @@ QVariant CSMWorld::NpcAttributesRefIdAdapter::getNestedData(
 
     if (subColIndex == 0)
         return subRowIndex;
-    else if (subColIndex == 1 && subRowIndex >= 0 && subRowIndex < ESM::Attribute::Length)
-        return static_cast<int>(npcStruct.mAttributes[subRowIndex]);
+    else if (subColIndex == 1)
+    {
+        const ESM::RefId attribute = ESM::Attribute::indexToRefId(subRowIndex);
+        if (!attribute.empty())
+            return static_cast<int>(npcStruct.getAttribute(attribute));
+    }
     return QVariant(); // throw an exception here?
 }
 
@@ -972,8 +969,9 @@ void CSMWorld::NpcAttributesRefIdAdapter::setNestedData(
     ESM::NPC npc = record.get();
     ESM::NPC::NPDTstruct52& npcStruct = npc.mNpdt;
 
-    if (subColIndex == 1 && subRowIndex >= 0 && subRowIndex < ESM::Attribute::Length)
-        npcStruct.mAttributes[subRowIndex] = static_cast<unsigned char>(value.toInt());
+    const ESM::RefId attribute = ESM::Attribute::indexToRefId(subRowIndex);
+    if (subColIndex == 1 && !attribute.empty())
+        npcStruct.mAttributes[attribute] = static_cast<unsigned char>(value.toInt());
     else
         return; // throw an exception here?
 
@@ -1038,13 +1036,14 @@ QVariant CSMWorld::NpcSkillsRefIdAdapter::getNestedData(
 
     const ESM::NPC::NPDTstruct52& npcStruct = record.get().mNpdt;
 
-    if (subRowIndex < 0 || subRowIndex >= ESM::Skill::Length)
+    const ESM::RefId skill = ESM::Skill::indexToRefId(subRowIndex);
+    if (skill.empty())
         throw std::runtime_error("index out of range");
 
     if (subColIndex == 0)
         return subRowIndex;
     else if (subColIndex == 1)
-        return static_cast<int>(npcStruct.mSkills[subRowIndex]);
+        return static_cast<int>(npcStruct.getSkill(skill));
     else
         return QVariant(); // throw an exception here?
 }
@@ -1057,11 +1056,12 @@ void CSMWorld::NpcSkillsRefIdAdapter::setNestedData(
     ESM::NPC npc = record.get();
     ESM::NPC::NPDTstruct52& npcStruct = npc.mNpdt;
 
-    if (subRowIndex < 0 || subRowIndex >= ESM::Skill::Length)
+    const ESM::RefId skill = ESM::Skill::indexToRefId(subRowIndex);
+    if (skill.empty())
         throw std::runtime_error("index out of range");
 
     if (subColIndex == 1)
-        npcStruct.mSkills[subRowIndex] = static_cast<unsigned char>(value.toInt());
+        npcStruct.mSkills[skill] = static_cast<unsigned char>(value.toInt());
     else
         return; // throw an exception here?
 
@@ -1287,8 +1287,12 @@ QVariant CSMWorld::CreatureAttributesRefIdAdapter::getNestedData(
 
     if (subColIndex == 0)
         return subRowIndex;
-    else if (subColIndex == 1 && subRowIndex >= 0 && subRowIndex < ESM::Attribute::Length)
-        return creature.mData.mAttributes[subRowIndex];
+    else if (subColIndex == 1)
+    {
+        const ESM::RefId attribute = ESM::Attribute::indexToRefId(subRowIndex);
+        if (!attribute.empty())
+            return creature.mData.getAttribute(attribute);
+    }
     return QVariant(); // throw an exception here?
 }
 
@@ -1298,10 +1302,11 @@ void CSMWorld::CreatureAttributesRefIdAdapter::setNestedData(
     Record<ESM::Creature>& record
         = static_cast<Record<ESM::Creature>&>(data.getRecord(RefIdData::LocalIndex(row, UniversalId::Type_Creature)));
 
-    if (subColIndex == 1 && subRowIndex >= 0 && subRowIndex < ESM::Attribute::Length)
+    const ESM::RefId attribute = ESM::Attribute::indexToRefId(subRowIndex);
+    if (subColIndex == 1 && !attribute.empty())
     {
         ESM::Creature creature = record.get();
-        creature.mData.mAttributes[subRowIndex] = value.toInt();
+        creature.mData.mAttributes[attribute] = value.toInt();
         record.setModified(creature);
     }
     // throw an exception here?
@@ -1542,7 +1547,7 @@ QVariant CSMWorld::WeaponRefIdAdapter::getData(const RefIdColumn* column, const 
         data.getRecord(RefIdData::LocalIndex(index, UniversalId::Type_Weapon)));
 
     if (column == mColumns.mType)
-        return record.get().mData.mType;
+        return ESM::Weapon::refIdToIndex(record.get().mData.mType);
 
     if (column == mColumns.mHealth)
         return record.get().mData.mHealth;
@@ -1582,7 +1587,7 @@ void CSMWorld::WeaponRefIdAdapter::setData(
     ESM::Weapon weapon = record.get();
 
     if (column == mColumns.mType)
-        weapon.mData.mType = value.toInt();
+        weapon.mData.mType = ESM::Weapon::indexToRefId(value.toInt());
     else if (column == mColumns.mHealth)
         weapon.mData.mHealth = value.toInt();
     else if (column == mColumns.mSpeed)

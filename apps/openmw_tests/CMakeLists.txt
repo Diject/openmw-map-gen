@@ -11,6 +11,7 @@ file(GLOB UNITTEST_SRC_FILES
     mwworld/testtimestamp.cpp
     mwworld/testptr.cpp
     mwworld/testweather.cpp
+    mwworld/testpositioncellgrid.cpp
 
     mwdialogue/testkeywordsearch.cpp
 
@@ -18,7 +19,22 @@ file(GLOB UNITTEST_SRC_FILES
     mwgui/weightedsearch.cpp
 
     mwscript/testscripts.cpp
+
+    mwsound/testheadcache.cpp
+    mwsound/testwarmqueue.cpp
 )
+
+if (MSVC)
+    # these TUs take a lot of memory for codegen
+    # in CI, they often go over the 8GB memory limit if another cl.exe is running at the same time
+    # this option (make sure you're not looking at the docs for the identically-named linker option) stops four codegen threads being spun off
+    # it hurts build time ~33% to enable this unnecessarily, though, so target it to the hungriest boys
+    set_source_files_properties(
+        mwworld/teststore.cpp
+        PROPERTIES
+        COMPILE_OPTIONS /cgthreads1
+    )
+endif()
 
 source_group(apps\\openmw-tests FILES ${UNITTEST_SRC_FILES})
 
@@ -33,6 +49,10 @@ target_link_libraries(openmw-tests
 # Fix for not visible pthreads functions for linker with glibc 2.15
 if (UNIX AND NOT APPLE)
     target_link_libraries(openmw-tests ${CMAKE_THREAD_LIBS_INIT})
+endif()
+
+if (WIN32)
+    target_sources(openmw-tests PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
 endif()
 
 if (BUILD_WITH_CODE_COVERAGE)

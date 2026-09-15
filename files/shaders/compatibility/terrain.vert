@@ -1,9 +1,5 @@
 #version 120
 
-#if @useUBO
-    #extension GL_ARB_uniform_buffer_object : require
-#endif
-
 #if @useGPUShader4
     #extension GL_EXT_gpu_shader4: require
 #endif
@@ -16,23 +12,28 @@ varying float linearDepth;
 #define PER_PIXEL_LIGHTING (@normalMap || @specularMap || @forcePPL)
 
 #if !PER_PIXEL_LIGHTING
+centroid varying vec3 shadedLighting;
+centroid varying vec3 shadedSpecular;
 centroid varying vec3 passLighting;
 centroid varying vec3 passSpecular;
-centroid varying vec3 shadowDiffuseLighting;
-centroid varying vec3 shadowSpecularLighting;
+#include "lib/light/clamp.glsl"
 #endif
+
 varying vec3 passViewPos;
 varying vec3 passNormal;
 
-#include "vertexcolors.glsl"
+#include "lib/material/vertexcolors.glsl"
 #include "shadows_vertex.glsl"
 #include "compatibility/normals.glsl"
 
-#include "lib/light/lighting.glsl"
 #include "lib/view/depth.glsl"
+
+centroid varying vec4 passColor;
 
 void main(void)
 {
+    Material material = getMaterial();
+
     gl_Position = modelToClip(gl_Vertex);
 
     vec4 viewPos = modelToView(gl_Vertex);
@@ -46,7 +47,7 @@ void main(void)
     normalToViewMatrix = gl_NormalMatrix;
 
 #if @normalMap
-    mat3 tbnMatrix = generateTangentSpace(vec4(1.0, 0.0, 0.0, -1.0), passNormal);
+    mat3 tbnMatrix = generateTangentSpace(vec4(1.0, 0.0, 0.0, 1.0), passNormal);
     tbnMatrix[0] = -normalize(cross(tbnMatrix[2], tbnMatrix[1])); // our original tangent was not at a 90 degree angle to the normal, so we need to rederive it
     normalToViewMatrix *= tbnMatrix;
 #endif
@@ -56,13 +57,22 @@ void main(void)
 #endif
 
 #if !PER_PIXEL_LIGHTING
-    vec3 diffuseLight, ambientLight, specularLight;
-    doLighting(viewPos.xyz, viewNormal, gl_FrontMaterial.shininess, diffuseLight, ambientLight, specularLight, shadowDiffuseLighting, shadowSpecularLighting);
-    passLighting = getDiffuseColor().xyz * diffuseLight + getAmbientColor().xyz * ambientLight + getEmissionColor().xyz;
-    passSpecular = getSpecularColor().xyz * specularLight;
-    clampLightingResult(passLighting);
-    shadowDiffuseLighting *= getDiffuseColor().xyz;
-    shadowSpecularLighting *= getSpecularColor().xyz;
+    float shininess = max(1e-4, material.shininess);
+    vec3 viewDir = passViewPos / euclideanDepth;
+    vec3 diffuseColor = getDiffuseColor(material, passColor).rgb;
+    vec3 ambientColor = getAmbientColor(material, passColor).rgb;
+    vec3 emissionColor = getEmissionColor(material, passColor).rgb;
+    vec3 specularColor = getSpecularColor(material, passColor).rgb;
+
+    vec3 sunDiffuse, sunAmbient, sunSpecular, pointDiffuse, pointAmbient, pointSpecular;
+    directionalLighting(viewDir, viewNormal, shininess, sunDiffuse, sunAmbient, sunSpecular);
+    pointLighting(clipToScreen(gl_Position), viewDir, passViewPos, viewNormal, shininess, pointDiffuse, pointAmbient, pointSpecular);
+    shadedLighting = diffuseColor * pointDiffuse + ambientColor * (pointAmbient + sunAmbient) + emissionColor;
+    shadedSpecular = specularColor * pointSpecular;
+    passLighting = shadedLighting + diffuseColor * sunDiffuse;
+    passSpecular = shadedSpecular + specularColor * sunSpecular;
+    clampLighting(shadedLighting);
+    clampLighting(passLighting);
 #endif
 
     uv = gl_MultiTexCoord0.xy;

@@ -40,9 +40,20 @@ namespace ESM
         mCrimeDispositionModifier = 0;
         esm.getHNOT(mCrimeDispositionModifier, "DISM");
 
-        const bool intFallback = esm.getFormatVersion() <= MaxIntFallbackFormatVersion;
-        for (auto& skill : mSkills)
-            skill.load(esm, intFallback);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            const bool intFallback = esm.getFormatVersion() <= MaxIntFallbackFormatVersion;
+            for (int i = 0; i < ESM::Skill::Length; ++i)
+                mSkills[ESM::Skill::indexToRefId(i)].load(esm, intFallback);
+        }
+        else
+        {
+            while (esm.isNextSub("SKIL"))
+            {
+                ESM::RefId skill = esm.getRefId();
+                mSkills[skill].load(esm);
+            }
+        }
 
         mIsWerewolf = false;
         esm.getHNOT(mIsWerewolf, "WOLF");
@@ -59,8 +70,27 @@ namespace ESM
         mLevelProgress = 0;
         esm.getHNOT(mLevelProgress, "LPRO");
 
-        mSkillIncrease.fill(0);
-        esm.getHNOT(mSkillIncrease, "INCR");
+        mSkillIncrease.clear();
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            std::array<int32_t, ESM::Attribute::Length> increases;
+            if (esm.getHNOT("INCR", increases))
+            {
+                for (int i = 0; i < ESM::Attribute::Length; ++i)
+                    mSkillIncrease[ESM::Attribute::indexToRefId(i)] = increases[i];
+            }
+        }
+        else
+        {
+            while (esm.isNextSub("INCR"))
+            {
+                esm.getSubHeader();
+                int32_t value;
+                esm.getT(value);
+                ESM::RefId attribute = esm.getRefId(esm.getSubSize() - sizeof(value));
+                mSkillIncrease[attribute] = value;
+            }
+        }
 
         mSpecIncreases.fill(0);
         esm.getHNOT(mSpecIncreases, "SPEC");
@@ -100,8 +130,26 @@ namespace ESM
         if (mCrimeDispositionModifier)
             esm.writeHNT("DISM", mCrimeDispositionModifier);
 
-        for (const auto& skill : mSkills)
-            skill.save(esm);
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
+        {
+            // This branch is only used in tests. It probably shouldn't exist.
+            for (int i = 0; i < ESM::Skill::Length; ++i)
+            {
+                const auto it = mSkills.find(ESM::Skill::indexToRefId(i));
+                if (it != mSkills.end())
+                    it->second.save(esm);
+                else
+                    StatState<float>{}.save(esm);
+            }
+        }
+        else
+        {
+            for (const auto& [skill, value] : mSkills)
+            {
+                esm.writeHNRefId("SKIL", skill);
+                value.save(esm);
+            }
+        }
 
         if (mIsWerewolf)
             esm.writeHNT("WOLF", mIsWerewolf);
@@ -118,17 +166,44 @@ namespace ESM
         if (mLevelProgress)
             esm.writeHNT("LPRO", mLevelProgress);
 
-        bool saveSkillIncreases = false;
-        for (int32_t increase : mSkillIncrease)
+        if (esm.getFormatVersion() <= MaxFixedStatsFormatVersion)
         {
-            if (increase != 0)
+            // This branch is only used in tests. It probably shouldn't exist.
+            bool saveSkillIncreases = false;
+            for (const auto& [id, increase] : mSkillIncrease)
             {
-                saveSkillIncreases = true;
-                break;
+                if (increase != 0)
+                {
+                    saveSkillIncreases = true;
+                    break;
+                }
+            }
+            if (saveSkillIncreases)
+            {
+                esm.startSubRecord("INCR");
+                for (int i = 0; i < ESM::Attribute::Length; ++i)
+                {
+                    int32_t increase = 0;
+                    const auto it = mSkillIncrease.find(ESM::Attribute::indexToRefId(i));
+                    if (it != mSkillIncrease.end())
+                        increase = it->second;
+                    esm.writeT(increase);
+                }
+                esm.endRecord("INCR");
             }
         }
-        if (saveSkillIncreases)
-            esm.writeHNT("INCR", mSkillIncrease);
+        else
+        {
+            for (const auto& [id, increase] : mSkillIncrease)
+            {
+                if (id.empty() || increase == 0)
+                    continue;
+                esm.startSubRecord("INCR");
+                esm.writeT(increase);
+                esm.writeHRefId(id);
+                esm.endRecord("INCR");
+            }
+        }
 
         if (mSpecIncreases[0] != 0 || mSpecIncreases[1] != 0 || mSpecIncreases[2] != 0)
             esm.writeHNT("SPEC", mSpecIncreases);
@@ -152,7 +227,7 @@ namespace ESM
         mReputation = 0;
         mWerewolfKills = 0;
         mLevelProgress = 0;
-        mSkillIncrease.fill(0);
+        mSkillIncrease.clear();
         mSpecIncreases.fill(0);
         mTimeToStartDrowning = 20;
         mCrimeId = -1;

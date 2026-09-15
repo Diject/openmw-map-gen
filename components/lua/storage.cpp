@@ -222,6 +222,17 @@ namespace LuaUtil
         return LuaUtil::makeReadOnly(res);
     }
 
+    sol::table LuaStorage::initLoadPackage(LuaUtil::LuaView& view, LuaStorage* playerStorage)
+    {
+        sol::table res(view.sol(), sol::create);
+        registerLifeTime(view, res);
+
+        res["playerSection"] = [playerStorage](sol::this_state lua, std::string_view section) {
+            return playerStorage->getReadOnlySection(lua, section);
+        };
+        return LuaUtil::makeReadOnly(res);
+    }
+
     void LuaStorage::clearTemporaryAndRemoveCallbacks()
     {
         auto it = mData.begin();
@@ -251,9 +262,19 @@ namespace LuaUtil
             if (fileSize == 0)
                 throw std::runtime_error("Storage file has zero length");
 
-            std::ifstream fin(path, std::fstream::binary);
+            std::ifstream fin(path, std::ios::binary);
+            if (!fin)
+                throw std::runtime_error("Failed to open storage file");
+
             std::string serializedData((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
-            sol::table data = deserialize(state, serializedData);
+            if (serializedData.size() != fileSize)
+                throw std::runtime_error("Failed to read storage file");
+
+            sol::object serializedObject = deserialize(state, serializedData);
+            if (!serializedObject.is<sol::table>())
+                throw std::runtime_error("Storage data is not a table");
+
+            sol::table data = serializedObject.as<sol::table>();
             for (const auto& [sectionName, sectionTable] : data)
             {
                 const std::shared_ptr<Section>& section = getSection(cast<std::string_view>(sectionName));

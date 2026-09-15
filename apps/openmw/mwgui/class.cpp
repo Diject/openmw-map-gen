@@ -259,8 +259,7 @@ namespace MWGui
         std::vector<std::pair<ESM::RefId, std::string>> items; // class id, class name
         for (const ESM::Class& classInfo : store.get<ESM::Class>())
         {
-            bool playable = (classInfo.mData.mIsPlayable != 0);
-            if (!playable) // Only display playable classes
+            if (!classInfo.mData.mIsPlayable) // Only display playable classes
                 continue;
 
             if (store.get<ESM::Class>().isDynamic(classInfo.mId))
@@ -305,18 +304,21 @@ namespace MWGui
         mSpecializationName->setCaption(MyGUI::UString(specName));
         ToolTips::createSpecializationToolTip(mSpecializationName, specName, specialization);
 
-        mFavoriteAttribute[0]->setAttributeId(ESM::Attribute::indexToRefId(currentClass->mData.mAttribute[0]));
-        mFavoriteAttribute[1]->setAttributeId(ESM::Attribute::indexToRefId(currentClass->mData.mAttribute[1]));
+        mFavoriteAttribute[0]->setAttributeId(currentClass->mData.mAttribute[0]);
+        mFavoriteAttribute[1]->setAttributeId(currentClass->mData.mAttribute[1]);
         ToolTips::createAttributeToolTip(mFavoriteAttribute[0], mFavoriteAttribute[0]->getAttributeId());
         ToolTips::createAttributeToolTip(mFavoriteAttribute[1], mFavoriteAttribute[1]->getAttributeId());
 
-        for (size_t i = 0; i < currentClass->mData.mSkills.size(); ++i)
+        for (size_t i = 0; i < currentClass->mData.mMinorSkills.size(); ++i)
         {
-            ESM::RefId minor = ESM::Skill::indexToRefId(currentClass->mData.mSkills[i][0]);
-            ESM::RefId major = ESM::Skill::indexToRefId(currentClass->mData.mSkills[i][1]);
+            const ESM::RefId& minor = currentClass->mData.mMinorSkills[i];
             mMinorSkill[i]->setSkillId(minor);
-            mMajorSkill[i]->setSkillId(major);
             ToolTips::createSkillToolTip(mMinorSkill[i], minor);
+        }
+        for (size_t i = 0; i < currentClass->mData.mMajorSkills.size(); ++i)
+        {
+            const ESM::RefId& major = currentClass->mData.mMajorSkills[i];
+            mMajorSkill[i]->setSkillId(major);
             ToolTips::createSkillToolTip(mMajorSkill[i], major);
         }
 

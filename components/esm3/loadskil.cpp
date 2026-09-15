@@ -3,6 +3,7 @@
 #include "esmreader.hpp"
 #include "esmwriter.hpp"
 
+#include <components/esm/attr.hpp>
 #include <components/misc/concepts.hpp>
 #include <components/misc/strings/algorithm.hpp>
 
@@ -10,35 +11,61 @@
 
 namespace ESM
 {
-    const SkillId Skill::Block("Block");
-    const SkillId Skill::Armorer("Armorer");
-    const SkillId Skill::MediumArmor("MediumArmor");
-    const SkillId Skill::HeavyArmor("HeavyArmor");
-    const SkillId Skill::BluntWeapon("BluntWeapon");
-    const SkillId Skill::LongBlade("LongBlade");
-    const SkillId Skill::Axe("Axe");
-    const SkillId Skill::Spear("Spear");
-    const SkillId Skill::Athletics("Athletics");
-    const SkillId Skill::Enchant("Enchant");
-    const SkillId Skill::Destruction("Destruction");
-    const SkillId Skill::Alteration("Alteration");
-    const SkillId Skill::Illusion("Illusion");
-    const SkillId Skill::Conjuration("Conjuration");
-    const SkillId Skill::Mysticism("Mysticism");
-    const SkillId Skill::Restoration("Restoration");
-    const SkillId Skill::Alchemy("Alchemy");
-    const SkillId Skill::Unarmored("Unarmored");
-    const SkillId Skill::Security("Security");
-    const SkillId Skill::Sneak("Sneak");
-    const SkillId Skill::Acrobatics("Acrobatics");
-    const SkillId Skill::LightArmor("LightArmor");
-    const SkillId Skill::ShortBlade("ShortBlade");
-    const SkillId Skill::Marksman("Marksman");
-    const SkillId Skill::Mercantile("Mercantile");
-    const SkillId Skill::Speechcraft("Speechcraft");
-    const SkillId Skill::HandToHand("HandToHand");
+    const RefId Skill::Block(ESM::StringRefId("Block"));
+    const RefId Skill::Armorer(ESM::StringRefId("Armorer"));
+    const RefId Skill::MediumArmor(ESM::StringRefId("MediumArmor"));
+    const RefId Skill::HeavyArmor(ESM::StringRefId("HeavyArmor"));
+    const RefId Skill::BluntWeapon(ESM::StringRefId("BluntWeapon"));
+    const RefId Skill::LongBlade(ESM::StringRefId("LongBlade"));
+    const RefId Skill::Axe(ESM::StringRefId("Axe"));
+    const RefId Skill::Spear(ESM::StringRefId("Spear"));
+    const RefId Skill::Athletics(ESM::StringRefId("Athletics"));
+    const RefId Skill::Enchant(ESM::StringRefId("Enchant"));
+    const RefId Skill::Destruction(ESM::StringRefId("Destruction"));
+    const RefId Skill::Alteration(ESM::StringRefId("Alteration"));
+    const RefId Skill::Illusion(ESM::StringRefId("Illusion"));
+    const RefId Skill::Conjuration(ESM::StringRefId("Conjuration"));
+    const RefId Skill::Mysticism(ESM::StringRefId("Mysticism"));
+    const RefId Skill::Restoration(ESM::StringRefId("Restoration"));
+    const RefId Skill::Alchemy(ESM::StringRefId("Alchemy"));
+    const RefId Skill::Unarmored(ESM::StringRefId("Unarmored"));
+    const RefId Skill::Security(ESM::StringRefId("Security"));
+    const RefId Skill::Sneak(ESM::StringRefId("Sneak"));
+    const RefId Skill::Acrobatics(ESM::StringRefId("Acrobatics"));
+    const RefId Skill::LightArmor(ESM::StringRefId("LightArmor"));
+    const RefId Skill::ShortBlade(ESM::StringRefId("ShortBlade"));
+    const RefId Skill::Marksman(ESM::StringRefId("Marksman"));
+    const RefId Skill::Mercantile(ESM::StringRefId("Mercantile"));
+    const RefId Skill::Speechcraft(ESM::StringRefId("Speechcraft"));
+    const RefId Skill::HandToHand(ESM::StringRefId("HandToHand"));
 
-    template <Misc::SameAsWithoutCvref<Skill::SKDTstruct> T>
+    namespace
+    {
+        struct EsmSKDTstruct
+        {
+            int32_t mAttribute;
+            int32_t mSpecialization;
+            float mUseValue[4];
+        };
+
+        void toBinary(const Skill::SKDTstruct& src, EsmSKDTstruct& dst)
+        {
+            dst.mAttribute = ESM::Attribute::refIdToIndex(src.mAttribute);
+            dst.mSpecialization = src.mSpecialization;
+            for (std::size_t i = 0; i < std::size(dst.mUseValue); ++i)
+                dst.mUseValue[i] = src.mUseValue[i];
+        }
+
+        void fromBinary(const EsmSKDTstruct& src, Skill::SKDTstruct& dst)
+        {
+            dst.mAttribute = ESM::Attribute::indexToRefId(src.mAttribute);
+            dst.mSpecialization = src.mSpecialization;
+            for (std::size_t i = 0; i < std::size(dst.mUseValue); ++i)
+                dst.mUseValue[i] = src.mUseValue[i];
+        }
+    }
+
+    template <Misc::SameAsWithoutCvref<EsmSKDTstruct> T>
     void decompose(T&& v, const auto& f)
     {
         f(v.mAttribute, v.mSpecialization, v.mUseValue);
@@ -62,9 +89,13 @@ namespace ESM
                     hasIndex = true;
                     break;
                 case fourCC("SKDT"):
-                    esm.getSubComposite(mData);
+                {
+                    EsmSKDTstruct data;
+                    esm.getSubComposite(data);
                     hasData = true;
+                    fromBinary(data, mData);
                     break;
+                }
                 case fourCC("DESC"):
                     mDescription = esm.getHString();
                     break;
@@ -79,22 +110,24 @@ namespace ESM
         if (!hasData)
             esm.fail("Missing SKDT");
 
-        mId = *indexToRefId(index).getIf<SkillId>();
+        mId = indexToRefId(index);
     }
 
     void Skill::save(ESMWriter& esm, bool /*isDeleted*/) const
     {
         esm.writeHNT("INDX", refIdToIndex(mId));
-        esm.writeNamedComposite("SKDT", mData);
+        EsmSKDTstruct data;
+        toBinary(mData, data);
+        esm.writeNamedComposite("SKDT", data);
         esm.writeHNOString("DESC", mDescription);
     }
 
     void Skill::blank()
     {
         mRecordFlags = 0;
-        mData.mAttribute = 0;
+        mData.mAttribute = {};
         mData.mSpecialization = 0;
-        mData.mUseValue[0] = mData.mUseValue[1] = mData.mUseValue[2] = mData.mUseValue[3] = 1.0;
+        mData.mUseValue.fill(1.f);
         mDescription.clear();
     }
 

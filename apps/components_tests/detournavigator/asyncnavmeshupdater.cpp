@@ -82,6 +82,44 @@ namespace
         updater.post(mAgentBounds, navMeshCacheItem, mPlayerTile, mWorldspace, changedTiles);
         updater.wait(WaitConditionType::allJobsDone, &mListener);
         EXPECT_NE(navMeshCacheItem->lockConst()->getImpl().getTileRefAt(0, 0, 0), 0u);
+        EXPECT_EQ(updater.getStats().mPosted, 1);
+    }
+
+    TEST_F(DetourNavigatorAsyncNavMeshUpdaterTest, wait_requires_rebuilt_tile)
+    {
+        struct UnlockOnLoad : Loading::Listener
+        {
+            ScopedUpdateGuard mGuard;
+
+            void loadingOn() override { mGuard.reset(); }
+        };
+
+        mSettings.mMinUpdateInterval = std::chrono::milliseconds(0);
+        mRecastMeshManager.setWorldspace(mWorldspace, nullptr);
+        addHeightFieldPlane(mRecastMeshManager);
+        AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
+        const auto navMeshCacheItem = std::make_shared<GuardedNavMeshCacheItem>(1, mSettings);
+
+        updater.post(mAgentBounds, navMeshCacheItem, mPlayerTile, mWorldspace, { { mPlayerTile, ChangeType::add } });
+        updater.wait(WaitConditionType::allJobsDone, &mListener);
+        ASSERT_NE(navMeshCacheItem->lockConst()->getImpl().getTileRefAt(0, 0, 0), 0u);
+
+        mRecastMeshManager.removeHeightfield(osg::Vec2i(0, 0), nullptr);
+        mRecastMeshManager.takeChangedTiles(nullptr);
+        updater.post(mAgentBounds, navMeshCacheItem, mPlayerTile, mWorldspace, { { mPlayerTile, ChangeType::remove } });
+        updater.wait(WaitConditionType::allJobsDone, &mListener);
+        ASSERT_EQ(navMeshCacheItem->lockConst()->getImpl().getTileRefAt(0, 0, 0), 0u);
+
+        addHeightFieldPlane(mRecastMeshManager);
+        UnlockOnLoad listener;
+        listener.mGuard = mRecastMeshManager.makeUpdateGuard();
+        updater.post(mAgentBounds, navMeshCacheItem, mPlayerTile, mWorldspace, { { mPlayerTile, ChangeType::update } });
+        updater.wait(WaitConditionType::requiredTilesPresent, &listener);
+        EXPECT_FALSE(listener.mGuard);
+        EXPECT_NE(navMeshCacheItem->lockConst()->getImpl().getTileRefAt(0, 0, 0), 0u);
+
+        listener.mGuard.reset();
+        updater.wait(WaitConditionType::allJobsDone, &mListener);
     }
 
     TEST_F(DetourNavigatorAsyncNavMeshUpdaterTest, repeated_post_should_lead_to_cache_hit)
@@ -379,7 +417,7 @@ namespace
         mRecastMeshManager.setWorldspace(mWorldspace, nullptr);
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteRecastMeshToFile = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDirPath("DetourNavigatorAsyncNavMeshUpdaterTest");
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath();
         mSettings.mRecastMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
@@ -396,7 +434,7 @@ namespace
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteRecastMeshToFile = true;
         mSettings.mEnableRecastMeshFileNameRevision = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDirPath("DetourNavigatorAsyncNavMeshUpdaterTest");
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath();
         mSettings.mRecastMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
@@ -412,7 +450,7 @@ namespace
         mRecastMeshManager.setWorldspace(mWorldspace, nullptr);
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteRecastMeshToFile = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDir() / "absent";
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath() / "absent";
         mSettings.mRecastMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
@@ -429,7 +467,7 @@ namespace
         mRecastMeshManager.setWorldspace(mWorldspace, nullptr);
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteNavMeshToFile = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDirPath("DetourNavigatorAsyncNavMeshUpdaterTest");
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath();
         mSettings.mNavMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
@@ -446,7 +484,7 @@ namespace
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteNavMeshToFile = true;
         mSettings.mEnableNavMeshFileNameRevision = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDirPath("DetourNavigatorAsyncNavMeshUpdaterTest");
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath();
         mSettings.mNavMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);
@@ -462,7 +500,7 @@ namespace
         mRecastMeshManager.setWorldspace(mWorldspace, nullptr);
         addHeightFieldPlane(mRecastMeshManager);
         mSettings.mEnableWriteNavMeshToFile = true;
-        const std::filesystem::path dir = TestingOpenMW::outputDir() / "absent";
+        const std::filesystem::path dir = TestingOpenMW::currentTestDirPath() / "absent";
         mSettings.mNavMeshPathPrefix = Files::pathToUnicodeString(dir) + "/";
         Log(Debug::Verbose) << mSettings.mRecastMeshPathPrefix;
         AsyncNavMeshUpdater updater(mSettings, mRecastMeshManager, mOffMeshConnectionsManager, nullptr);

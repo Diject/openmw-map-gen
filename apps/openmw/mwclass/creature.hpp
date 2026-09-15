@@ -63,12 +63,14 @@ namespace MWClass
 
         bool evaluateHit(const MWWorld::Ptr& ptr, MWWorld::Ptr& victim, osg::Vec3f& hitPosition) const override;
 
-        void hit(const MWWorld::Ptr& ptr, float attackStrength, int type, const MWWorld::Ptr& victim,
-            const osg::Vec3f& hitPosition, bool success) const override;
+        void hit(const MWWorld::Ptr& ptr, float attackStrength, float attackWindUp, int type,
+            const MWWorld::Ptr& victim, const osg::Vec3f& hitPosition, bool success) const override;
 
         void onHit(const MWWorld::Ptr& ptr, const std::map<std::string, float>& damages, ESM::RefId object,
             const MWWorld::Ptr& attacker, bool successful,
             const MWMechanics::DamageSourceType sourceType) const override;
+
+        std::string_view getWerewolfRefusalSoundId() const override { return "WolfCreature"; }
 
         std::unique_ptr<MWWorld::Action> activate(const MWWorld::Ptr& ptr, const MWWorld::Ptr& actor) const override;
         ///< Generate action for activation
@@ -105,9 +107,10 @@ namespace MWClass
 
         float getMaxSpeed(const MWWorld::Ptr& ptr) const override;
 
-        std::string_view getModel(const MWWorld::ConstPtr& ptr) const override;
+        VFS::Path::NormalizedView getModel(const MWWorld::ConstPtr& ptr) const override;
 
-        void getModelsToPreload(const MWWorld::ConstPtr& ptr, std::vector<std::string_view>& models) const override;
+        void getModelsToPreload(
+            const MWWorld::ConstPtr& ptr, std::vector<VFS::Path::NormalizedView>& models) const override;
         ///< Get a list of models to preload that this object may use (directly or indirectly). default implementation:
         ///< list getModel().
 

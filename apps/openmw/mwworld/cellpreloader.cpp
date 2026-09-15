@@ -59,7 +59,7 @@ namespace MWWorld
             return true;
         }
 
-        std::vector<std::string_view>& mOut;
+        std::vector<VFS::Path::NormalizedView>& mOut;
     };
 
     /// Worker thread item: preload models in a cell.
@@ -108,7 +108,7 @@ namespace MWWorld
 
             VFS::Path::Normalized mesh;
             VFS::Path::Normalized kfname;
-            for (std::string_view path : mMeshes)
+            for (VFS::Path::NormalizedView path : mMeshes)
             {
                 if (mAbort)
                     break;
@@ -116,7 +116,7 @@ namespace MWWorld
                 try
                 {
                     const VFS::Manager& vfs = *mSceneManager->getVFS();
-                    mesh = Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(path));
+                    mesh = Misc::ResourceHelpers::correctMeshPath(path);
                     mesh = Misc::ResourceHelpers::correctActorModelPath(mesh, &vfs);
 
                     if (!vfs.exists(mesh))
@@ -150,7 +150,7 @@ namespace MWWorld
         bool mIsExterior;
         ESM::ExteriorCellLocation mCellLocation;
         ESM::RefId mCellId;
-        std::vector<std::string_view> mMeshes;
+        std::vector<VFS::Path::NormalizedView> mMeshes;
         Resource::SceneManager* mSceneManager;
         Resource::BulletShapeManager* mBulletShapeManager;
         Resource::KeyframeManager* mKeyframeManager;
@@ -394,10 +394,20 @@ namespace MWWorld
             mTerrainPreloadPositions.clear();
             mLoadedTerrainPositions.clear();
         }
-        else if (contains(mTerrainPreloadPositions, positions, 128.f))
+        else if (contains(mTerrainPreloadPositions, positions, terrainPreloadMergeDistance))
             return;
         if (mTerrainPreloadItem && !mTerrainPreloadItem->isDone())
+        {
+            const bool sameGrids = std::ranges::equal(mTerrainPreloadPositions, positions,
+                [](const PositionCellGrid& l, const PositionCellGrid& r) { return l.mCellBounds == r.mCellBounds; });
+            if (!sameGrids)
+            {
+                mTerrainPreloadItem->abort();
+                // Do not record the aborted target as loaded in updateCache.
+                mTerrainPreloadPositions.clear();
+            }
             return;
+        }
         else
         {
             if (mTerrainViews.size() > positions.size())

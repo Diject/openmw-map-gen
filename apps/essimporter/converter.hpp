@@ -19,6 +19,7 @@
 #include <components/esm3/loadcrea.hpp>
 #include <components/esm3/loadfact.hpp>
 #include <components/esm3/loadglob.hpp>
+#include <components/esm3/loadregn.hpp>
 #include <components/esm3/projectilestate.hpp>
 #include <components/esm3/queststate.hpp>
 #include <components/esm3/stolenitems.hpp>
@@ -54,7 +55,7 @@ namespace ESSImport
     {
     public:
         /// @return the order for writing this converter's records to the output file, in relation to other converters
-        virtual int getStage() { return 1; }
+        virtual int getStage() const { return 1; }
 
         virtual ~Converter() = default;
 
@@ -66,7 +67,7 @@ namespace ESSImport
 
         /// Called after the input file has been read in completely, which may be necessary
         /// if the conversion process relies on information in other records
-        virtual void write(ESM::ESMWriter& esm) {}
+        virtual void write(ESM::ESMWriter& esm) const {}
 
     protected:
         Context* mContext;
@@ -77,7 +78,7 @@ namespace ESSImport
     class DefaultConverter : public Converter
     {
     public:
-        int getStage() override { return 0; }
+        int getStage() const override { return 0; }
 
         void read(ESM::ESMReader& esm) override
         {
@@ -88,7 +89,7 @@ namespace ESSImport
             mRecords[record.mId] = record;
         }
 
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             for (auto it = mRecords.begin(); it != mRecords.end(); ++it)
             {
@@ -201,7 +202,7 @@ namespace ESSImport
             bool isDeleted = false;
 
             book.load(esm, isDeleted);
-            if (book.mData.mSkillId == -1)
+            if (book.mData.mSkillId.empty())
                 mContext->mPlayer.mObject.mNpcStats.mUsedIds.push_back(book.mId);
 
             mRecords[book.mId] = book;
@@ -257,7 +258,7 @@ namespace ESSImport
                 }
             }
         }
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             esm.startRecord(ESM::REC_ASPL);
             esm.writeHNRefId("ID__", mSelectedSpell);
@@ -286,7 +287,7 @@ namespace ESSImport
             convertPCDT(pcdt, mContext->mPlayer, mContext->mDialogueState.mKnownTopics, mFirstPersonCam,
                 mTeleportingEnabled, mLevitationEnabled, mContext->mControlsState);
         }
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             esm.startRecord(ESM::REC_ENAB);
             esm.writeHNT("TELE", mTeleportingEnabled);
@@ -331,7 +332,7 @@ namespace ESSImport
     {
     public:
         void read(ESM::ESMReader& esm) override;
-        void write(ESM::ESMWriter& esm) override;
+        void write(ESM::ESMWriter& esm) const override;
 
     private:
         osg::ref_ptr<osg::Image> mGlobalMapImage;
@@ -341,14 +342,13 @@ namespace ESSImport
     {
     public:
         void read(ESM::ESMReader& esm) override;
-        void write(ESM::ESMWriter& esm) override;
+        void write(ESM::ESMWriter& esm) const override;
 
     private:
         struct Cell
         {
             ESM::Cell mCell;
             std::vector<CellRef> mRefs;
-            std::vector<unsigned int> mFogOfWar;
         };
 
         std::map<std::string, Cell, Misc::StringUtils::CiComp> mIntCells;
@@ -356,7 +356,7 @@ namespace ESSImport
 
         std::vector<ESM::CustomMarker> mMarkers;
 
-        void writeCell(const Cell& cell, ESM::ESMWriter& esm);
+        void writeCell(const Cell& cell, ESM::ESMWriter& esm) const;
     };
 
     class ConvertKLST : public Converter
@@ -371,7 +371,7 @@ namespace ESSImport
             mContext->mPlayer.mObject.mNpcStats.mWerewolfKills = klst.mWerewolfKills;
         }
 
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             esm.startRecord(ESM::REC_DCOU);
             for (const auto& [id, count] : mKillCounter)
@@ -428,7 +428,7 @@ namespace ESSImport
                 }
             }
         }
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             ESM::StolenItems items;
             for (auto it = mStolenItems.begin(); it != mStolenItems.end(); ++it)
@@ -486,7 +486,7 @@ namespace ESSImport
             if (dial.mIndex > 0)
                 mDials[id] = dial;
         }
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             for (auto it = mDials.begin(); it != mDials.end(); ++it)
             {
@@ -539,11 +539,11 @@ namespace ESSImport
             mHasGame = true;
         }
 
-        int validateWeatherID(int weatherID)
+        ESM::RefId validateWeatherID(int weatherID) const
         {
             if (weatherID >= -1 && weatherID < 10)
             {
-                return weatherID;
+                return ESM::Weather::indexToRefId(weatherID);
             }
             else
             {
@@ -551,7 +551,7 @@ namespace ESSImport
             }
         }
 
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             if (!mHasGame)
                 return;
@@ -563,7 +563,7 @@ namespace ESSImport
             weather.mTransitionFactor = 1 - (mGame.mGMDT.mWeatherTransition / 100.0f);
             weather.mCurrentWeather = validateWeatherID(mGame.mGMDT.mCurrentWeather);
             weather.mNextWeather = validateWeatherID(mGame.mGMDT.mNextWeather);
-            weather.mQueuedWeather = -1;
+            weather.mQueuedWeather = {};
             // TODO: Determine how ModRegion modifiers are saved in Morrowind.
             weather.save(esm);
             esm.endRecord(ESM::REC_WTHR);
@@ -586,7 +586,7 @@ namespace ESSImport
             convertSCPT(script, out);
             mScripts.push_back(std::move(out));
         }
-        void write(ESM::ESMWriter& esm) override
+        void write(ESM::ESMWriter& esm) const override
         {
             for (const auto& script : mScripts)
             {
@@ -604,12 +604,12 @@ namespace ESSImport
     class ConvertPROJ : public Converter
     {
     public:
-        int getStage() override { return 2; }
+        int getStage() const override { return 2; }
         void read(ESM::ESMReader& esm) override;
-        void write(ESM::ESMWriter& esm) override;
+        void write(ESM::ESMWriter& esm) const override;
 
     private:
-        void convertBaseState(ESM::BaseProjectileState& base, const PROJ::PNAM& pnam);
+        void convertBaseState(ESM::BaseProjectileState& base, const PROJ::PNAM& pnam) const;
         PROJ mProj;
     };
 
@@ -617,7 +617,7 @@ namespace ESSImport
     {
     public:
         void read(ESM::ESMReader& esm) override;
-        void write(ESM::ESMWriter& esm) override;
+        void write(ESM::ESMWriter& esm) const override;
 
     private:
         SPLM mSPLM;

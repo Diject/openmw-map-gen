@@ -24,7 +24,7 @@ namespace ESM
         Vector3 mPosition;
         Quaternion mOrientation;
 
-        int32_t mActorId;
+        RefNum mCaster;
 
         void load(ESMReader& esm);
         void save(ESMWriter& esm) const;
@@ -45,6 +45,7 @@ namespace ESM
         RefId mBowId;
         Vector3 mVelocity;
         float mAttackStrength;
+        float mAttackWindUp;
 
         void load(ESMReader& esm);
         void save(ESMWriter& esm) const;

@@ -11,7 +11,7 @@ namespace ESM
         esm.writeHNRefId("ID__", mId);
         esm.writeHNT("VEC3", mPosition);
         esm.writeHNT("QUAT", mOrientation);
-        esm.writeHNT("ACTO", mActorId);
+        esm.writeFormId(mCaster, true, "ACTO");
     }
 
     void BaseProjectileState::load(ESMReader& esm)
@@ -19,7 +19,13 @@ namespace ESM
         mId = esm.getHNRefId("ID__");
         esm.getHNT("VEC3", mPosition.mValues);
         esm.getHNT("QUAT", mOrientation.mValues);
-        esm.getHNT(mActorId, "ACTO");
+        if (esm.getFormatVersion() <= MaxActorIdSaveGameFormatVersion)
+        {
+            mCaster.mIndex = static_cast<uint32_t>(-1);
+            esm.getHNT(mCaster.mIndex, "ACTO");
+        }
+        else
+            mCaster = esm.getFormId(true, "ACTO");
     }
 
     void MagicBoltState::save(ESMWriter& esm) const
@@ -51,6 +57,7 @@ namespace ESM
         esm.writeHNRefId("BOW_", mBowId);
         esm.writeHNT("VEL_", mVelocity);
         esm.writeHNT("STR_", mAttackStrength);
+        esm.writeHNT("WIND", mAttackWindUp);
     }
 
     void ProjectileState::load(ESMReader& esm)
@@ -62,6 +69,9 @@ namespace ESM
 
         mAttackStrength = 1.f;
         esm.getHNOT(mAttackStrength, "STR_");
+
+        mAttackWindUp = -1.f;
+        esm.getHNOT(mAttackWindUp, "WIND");
     }
 
 }

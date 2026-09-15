@@ -4,6 +4,7 @@
 #include <MyGUI_InputManager.h>
 #include <MyGUI_RenderManager.h>
 
+#include <components/lua_ui/input.hpp>
 #include <components/sdlutil/sdlinputwrapper.hpp>
 #include <components/sdlutil/sdlmappings.hpp>
 #include <components/settings/values.hpp>
@@ -64,12 +65,9 @@ namespace MWInput
             mGuiCursorX = static_cast<float>(arg.x) / uiScale;
             mGuiCursorY = static_cast<float>(arg.y) / uiScale;
 
-            mMouseWheel = static_cast<int>(arg.z);
+            if (arg.zrel != 0)
+                mMouseWheel = static_cast<int>(arg.z);
 
-            MyGUI::InputManager::getInstance().injectMouseMove(
-                static_cast<int>(mGuiCursorX), static_cast<int>(mGuiCursorY), mMouseWheel);
-            // FIXME: inject twice to force updating focused widget states (tooltips) resulting from changing the
-            // viewport by scroll wheel
             MyGUI::InputManager::getInstance().injectMouseMove(
                 static_cast<int>(mGuiCursorX), static_cast<int>(mGuiCursorY), mMouseWheel);
 
@@ -155,6 +153,12 @@ namespace MWInput
         input->setJoystickLastUsed(false);
         MWBase::Environment::get().getLuaManager()->inputEvent({ MWBase::LuaManager::InputEvent::MouseWheel,
             MWBase::LuaManager::InputEvent::WheelChange{ arg.x, arg.y } });
+
+        if (mGuiCursorEnabled)
+        {
+            if (MyGUI::Widget* widget = MyGUI::InputManager::getInstance().getMouseFocusWidget())
+                LuaUi::dispatchMouseWheel(widget, mGuiCursorX, mGuiCursorY, arg.preciseX, arg.preciseY);
+        }
     }
 
     void MouseManager::mousePressed(const SDL_MouseButtonEvent& arg, Uint8 id)

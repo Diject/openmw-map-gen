@@ -25,9 +25,7 @@
 #include <string>
 
 #include <osg/Camera>
-#include <osg/Material>
 #include <osg/MatrixTransform>
-#include <osg/LightSource>
 #include <osg/PolygonOffset>
 
 #include <osgShadow/ShadowTechnique>
@@ -37,6 +35,8 @@
 // NOLINTBEGIN(readability-identifier-naming)
 
 namespace SceneUtil {
+
+    class Light;
 
     /** ViewDependentShadowMap provides an base implementation of view dependent shadow mapping techniques.*/
     class MWShadowTechnique : public osgShadow::ShadowTechnique
@@ -81,6 +81,8 @@ namespace SceneUtil {
         virtual void setSplitPointDeltaBias(double bias);
 
         virtual void setPolygonOffset(float factor, float units);
+
+        virtual void setMaximumShadowMapDistance(float distance);
 
         virtual void setShadowFadeStart(float shadowFadeStart);
 
@@ -168,12 +170,12 @@ namespace SceneUtil {
         {
             LightData(ViewDependentData* vdd);
 
-            virtual void setLightData(osg::RefMatrix* lm, const osg::Light* l, const osg::Matrixd& modelViewMatrix);
+            virtual void setLightData(osg::RefMatrix* lm, const Light* l, const osg::Matrixd& modelViewMatrix);
 
             ViewDependentData*                  _viewDependentData;
 
             osg::ref_ptr<osg::RefMatrix>        lightMatrix;
-            osg::ref_ptr<const osg::Light>      light;
+            osg::ref_ptr<const Light>           light;
 
             osg::Vec4d                          lightPos;
             osg::Vec3d                          lightPos3;
@@ -191,6 +193,8 @@ namespace SceneUtil {
             ShadowData(ViewDependentData* vdd);
 
             virtual void releaseGLObjects(osg::State* = 0) const;
+
+            void updateTextureSize();
 
             ViewDependentData*                  _viewDependentData;
 

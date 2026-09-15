@@ -32,7 +32,7 @@ namespace ESM
             TimeStamp mNextWorsening;
         };
 
-        std::array<StatState<float>, Attribute::Length> mAttributes;
+        std::map<ESM::RefId, StatState<float>> mAttributes;
         std::array<StatState<float>, 3> mDynamic;
 
         MagicEffects mMagicEffects;
@@ -43,7 +43,7 @@ namespace ESM
         std::array<StatState<int>, 4> mAiSettings;
 
         std::map<SummonKey, int> mSummonedCreatureMap;
-        std::multimap<int, int> mSummonedCreatures;
+        std::multimap<ESM::RefId, RefNum> mSummonedCreatures;
         std::vector<int> mSummonGraveyard;
 
         TimeStamp mTradeTime;

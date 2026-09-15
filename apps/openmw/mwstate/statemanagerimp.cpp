@@ -6,6 +6,7 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include <components/esm3/actoridconverter.hpp>
 #include <components/esm3/esmreader.hpp>
 #include <components/esm3/esmwriter.hpp>
 #include <components/esm3/loadcell.hpp>
@@ -65,7 +66,6 @@ void MWState::StateManager::cleanup(bool force)
         mCharacterManager.setCurrentCharacter(nullptr);
         mTimePlayed = 0;
         mLastSavegame.clear();
-        MWMechanics::CreatureStats::cleanup();
 
         mState = State_NoGame;
         MWBase::Environment::get().getLuaManager()->noGame();
@@ -469,6 +469,10 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
         reader.setContentFileMapping(&contentFileMap);
         MWBase::Environment::get().getLuaManager()->setContentFileMapping(contentFileMap);
 
+        ESM::ActorIdConverter actorIdConverter;
+        if (version <= ESM::MaxActorIdSaveGameFormatVersion)
+            reader.mActorIdConverter = &actorIdConverter;
+
         Loading::Listener& listener = *MWBase::Environment::get().getWindowManager()->getLoadingScreen();
 
         listener.setProgressRange(100);
@@ -542,6 +546,10 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
                 case ESM::REC_CREA:
                 case ESM::REC_CONT:
                 case ESM::REC_RAND:
+                case ESM::REC_STAT:
+                case ESM::REC_DOOR:
+                case ESM::REC_PROB:
+                case ESM::REC_INGR:
                     MWBase::Environment::get().getWorld()->readRecord(reader, n.toInt());
                     break;
 
@@ -589,7 +597,6 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
                 currentPercent = progressPercent;
             }
         }
-
         mCharacterManager.setCurrentCharacter(character);
 
         mState = State_Running;
@@ -599,7 +606,8 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
         mLastSavegame = filepath;
 
         MWBase::Environment::get().getWindowManager()->setNewGame(false);
-        MWBase::Environment::get().getWorld()->saveLoaded();
+        MWBase::Environment::get().getWorld()->saveLoaded(reader);
+        actorIdConverter.apply();
         MWBase::Environment::get().getWorld()->setupPlayer();
         MWBase::Environment::get().getWorld()->renderPlayer();
         MWBase::Environment::get().getWindowManager()->updatePlayer();
@@ -646,6 +654,12 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
         MWBase::Environment::get().getWorldScene()->markCellAsUnchanged();
 
         MWBase::Environment::get().getLuaManager()->gameLoaded();
+        for (int actorId : actorIdConverter.mGraveyard)
+        {
+            auto mapped = actorIdConverter.mMappings.find(actorId);
+            if (mapped != actorIdConverter.mMappings.end())
+                MWBase::Environment::get().getMechanicsManager()->cleanupSummonedCreature(mapped->second);
+        }
     }
     catch (const SaveVersionTooNewError& e)
     {
@@ -662,7 +676,7 @@ void MWState::StateManager::loadGame(const Character* character, const std::file
         {
             // Insert additional else if statements above to cover future releases
             static_assert(ESM::MinSupportedSaveGameFormatVersion <= ESM::OpenMW0_49MinSaveGameFormatVersion);
-            release = "OpenMW 0.51.0";
+            release = "OpenMW 0.52.0";
         }
         auto l10n = MWBase::Environment::get().getL10nManager()->getContext("OMWEngine");
         std::string error = l10n->formatMessage("LoadingRequiresOldVersionError", { "version" }, { release });
@@ -753,11 +767,11 @@ void MWState::StateManager::update(float duration)
         }
     }
 
-    if (mNewGameRequest)
+    if (mNewGameRequest.has_value())
     {
         MWBase::Environment::get().getWindowManager()->removeGuiMode(MWGui::GM_MainMenu);
-        newGame();
-        mNewGameRequest = false;
+        newGame(mNewGameRequest->mBypass);
+        mNewGameRequest = std::nullopt;
     }
 
     if (mLoadRequest)

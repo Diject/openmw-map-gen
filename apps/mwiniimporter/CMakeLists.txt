@@ -19,8 +19,12 @@ target_link_libraries(openmw-iniimporter
 )
 
 if (WIN32)
-    INSTALL(TARGETS openmw-iniimporter RUNTIME DESTINATION ".")
-endif(WIN32)
+    target_sources(openmw-iniimporter PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
+endif()
+
+if (NOT APPLE)
+    INSTALL(TARGETS openmw-iniimporter)
+endif()
 
 if (MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -municode")
@@ -32,8 +36,5 @@ if (BUILD_WITH_CODE_COVERAGE)
 endif()
 
 if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)
-    target_precompile_headers(openmw-iniimporter PRIVATE
-        <string>
-        <vector>
-    )
+    target_precompile_headers(openmw-iniimporter REUSE_FROM components)
 endif()

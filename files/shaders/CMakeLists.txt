@@ -20,33 +20,50 @@ set(SHADER_FILES
     lib/core/fragment.glsl
     lib/core/fragment.h.glsl
     lib/core/fragment_multiview.glsl
+    lib/core/lighting_fragment.glsl
+    lib/core/lighting_vertex.glsl
+    lib/core/lighting_fragment_legacy.glsl
+    lib/core/lighting_vertex_legacy.glsl
+    lib/core/lighting_fragment_impl.glsl
+    lib/core/lighting_vertex_impl.glsl
     lib/core/vertex.glsl
     lib/core/vertex.h.glsl
     lib/core/vertex_multiview.glsl
-    lib/light/lighting.glsl
-    lib/light/lighting_util.glsl
+    lib/light/bindings.glsl
+    lib/light/bindings-legacy.glsl
+    lib/light/clamp.glsl
+    lib/light/util.glsl
+    lib/light/struct.glsl
     lib/sky/passes.glsl
     lib/material/parallax.glsl
     lib/material/alpha.glsl
+    lib/material/struct.glsl
+    lib/material/vertexcolors.glsl
+    lib/material/colormodes.glsl
     compatibility/ripples_blobber.frag
     compatibility/ripples_simulate.frag
     compatibility/fog.glsl
     compatibility/groundcover.vert
     compatibility/groundcover.frag
+    compatibility/globalmap.vert
+    compatibility/globalmap.frag
     compatibility/water.vert
     compatibility/water.frag
     compatibility/objects.vert
     compatibility/objects.frag
     compatibility/terrain.vert
     compatibility/terrain.frag
+    compatibility/terrain_composite.vert
+    compatibility/terrain_composite.frag
     compatibility/shadows_vertex.glsl
     compatibility/shadows_fragment.glsl
     compatibility/shadowcasting.vert
     compatibility/shadowcasting.frag
-    compatibility/vertexcolors.glsl
     compatibility/normals.glsl
     compatibility/multiview_resolve.vert
     compatibility/multiview_resolve.frag
+    compatibility/outline.frag
+    compatibility/outline.vert
     compatibility/depthclipped.vert
     compatibility/depthclipped.frag
     compatibility/gui.vert
@@ -67,6 +84,8 @@ set(SHADER_FILES
     core/ripples_simulate.comp
     core/gui.frag
     core/gui.vert
+    core/lighting/cluster.comp
+    core/lighting/cull.comp
 )
 
 copy_all_resource_files(${CMAKE_CURRENT_SOURCE_DIR} ${OPENMW_RESOURCES_ROOT} ${DDIRRELATIVE} "${SHADER_FILES}")

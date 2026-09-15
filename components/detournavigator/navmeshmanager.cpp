@@ -177,17 +177,17 @@ namespace DetourNavigator
         const auto startTilePosition = getTilePosition(mSettings.mRecast, start);
         const auto endTilePosition = getTilePosition(mSettings.mRecast, end);
 
-        mRecastMeshManager.addChangedTile(startTilePosition, ChangeType::add);
+        mRecastMeshManager.addChangedTile(startTilePosition);
 
         if (startTilePosition != endTilePosition)
-            mRecastMeshManager.addChangedTile(endTilePosition, ChangeType::add);
+            mRecastMeshManager.addChangedTile(endTilePosition);
     }
 
     void NavMeshManager::removeOffMeshConnections(const ObjectId id)
     {
         const auto changedTiles = mOffMeshConnectionsManager.remove(id);
         for (const auto& tile : changedTiles)
-            mRecastMeshManager.addChangedTile(tile, ChangeType::update);
+            mRecastMeshManager.addChangedTile(tile);
     }
 
     void NavMeshManager::update(const osg::Vec3f& playerPosition, const UpdateGuard* guard)
@@ -209,18 +209,21 @@ namespace DetourNavigator
         const TilesPositionsRange& range, const SharedNavMeshCacheItem& cached,
         const std::map<osg::Vec2i, ChangeType>& changedTiles)
     {
-        std::map<osg::Vec2i, ChangeType> tilesToPost = changedTiles;
+        std::map<osg::Vec2i, ChangeType> tilesToPost;
+        const int maxTiles = mSettings.mMaxTilesNumber;
+        for (const auto& [k, v] : changedTiles)
+            if (shouldAddTile(k, playerTile, maxTiles))
+                tilesToPost.emplace(k, v);
         {
-            const int maxTiles = mSettings.mMaxTilesNumber;
             const auto locked = cached->lockConst();
             const auto& navMesh = locked->getImpl();
             getTilesPositions(range, [&](const TilePosition& tile) {
-                if (changedTiles.find(tile) != changedTiles.end())
+                if (changedTiles.find(tile) != changedTiles.end() || locked->isEmptyTile(tile))
                     return;
                 const bool shouldAdd = shouldAddTile(tile, playerTile, maxTiles);
                 const bool presentInNavMesh = navMesh.getTileAt(tile.x(), tile.y(), 0) != nullptr;
                 if (shouldAdd && !presentInNavMesh)
-                    tilesToPost.emplace(tile, locked->isEmptyTile(tile) ? ChangeType::update : ChangeType::add);
+                    tilesToPost.emplace(tile, ChangeType::add);
                 else if (!shouldAdd && presentInNavMesh)
                     tilesToPost.emplace(tile, ChangeType::remove);
             });

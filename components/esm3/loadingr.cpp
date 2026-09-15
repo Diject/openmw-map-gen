@@ -3,14 +3,64 @@
 #include "esmreader.hpp"
 #include "esmwriter.hpp"
 
+#include <components/esm/attr.hpp>
+#include <components/esm3/loadmgef.hpp>
+#include <components/esm3/loadskil.hpp>
 #include <components/misc/concepts.hpp>
 
 namespace ESM
 {
-    template <Misc::SameAsWithoutCvref<Ingredient::IRDTstruct> T>
+    namespace
+    {
+        // IRDT format defined by Morrowind.esm
+        struct EsmIRDTstruct
+        {
+            float mWeight;
+            int32_t mValue, mEffectID[4], mSkills[4], mAttributes[4];
+        };
+
+        // IRDT format used in saves
+        struct ValueAndWeight
+        {
+            float mWeight;
+            int32_t mValue;
+        };
+
+        void toBinary(const Ingredient::IRDTstruct& src, EsmIRDTstruct& dst)
+        {
+            dst.mWeight = src.mWeight;
+            dst.mValue = src.mValue;
+            for (int i = 0; i < 4; ++i)
+            {
+                dst.mEffectID[i] = ESM::MagicEffect::refIdToIndex(src.mEffectID[i]);
+                dst.mSkills[i] = ESM::Skill::refIdToIndex(src.mSkills[i]);
+                dst.mAttributes[i] = ESM::Attribute::refIdToIndex(src.mAttributes[i]);
+            }
+        }
+
+        void fromBinary(const EsmIRDTstruct& src, Ingredient::IRDTstruct& dst)
+        {
+            dst.mWeight = src.mWeight;
+            dst.mValue = src.mValue;
+            for (int i = 0; i < 4; ++i)
+            {
+                dst.mEffectID[i] = ESM::MagicEffect::indexToRefId(src.mEffectID[i]);
+                dst.mSkills[i] = ESM::Skill::indexToRefId(src.mSkills[i]);
+                dst.mAttributes[i] = ESM::Attribute::indexToRefId(src.mAttributes[i]);
+            }
+        }
+    }
+
+    template <Misc::SameAsWithoutCvref<EsmIRDTstruct> T>
     void decompose(T&& v, const auto& f)
     {
         f(v.mWeight, v.mValue, v.mEffectID, v.mSkills, v.mAttributes);
+    }
+
+    template <Misc::SameAsWithoutCvref<ValueAndWeight> T>
+    void decompose(T&& v, const auto& f)
+    {
+        f(v.mWeight, v.mValue);
     }
 
     void Ingredient::load(ESMReader& esm, bool& isDeleted)
@@ -36,9 +86,29 @@ namespace ESM
                     mName = esm.getHString();
                     break;
                 case fourCC("IRDT"):
-                    esm.getSubComposite(mData);
+                {
+                    if (esm.getFormatVersion() <= MaxIngredientIndexFormatVersion)
+                    {
+                        EsmIRDTstruct bin;
+                        esm.getSubComposite(bin);
+                        fromBinary(bin, mData);
+                    }
+                    else
+                    {
+                        ValueAndWeight bin;
+                        esm.getSubComposite(bin);
+                        mData.mWeight = bin.mWeight;
+                        mData.mValue = bin.mValue;
+                        for (int i = 0; i < 4 && esm.isNextSub("ENID"); ++i)
+                        {
+                            mData.mEffectID[i] = esm.getRefId();
+                            mData.mSkills[i] = esm.getHNORefId("ENSK");
+                            mData.mAttributes[i] = esm.getHNORefId("ENAT");
+                        }
+                    }
                     hasData = true;
                     break;
+                }
                 case fourCC("SCRI"):
                     mScript = esm.getRefId();
                     break;
@@ -60,20 +130,29 @@ namespace ESM
         if (!hasData && !isDeleted)
             esm.fail("Missing IRDT subrecord");
 
-        // horrible hack to fix broken data in records
-        for (int i = 0; i < 4; ++i)
+        if (esm.getFormatVersion() <= MaxIngredientIndexFormatVersion)
         {
-            if (mData.mEffectID[i] != 85 && mData.mEffectID[i] != 22 && mData.mEffectID[i] != 17
-                && mData.mEffectID[i] != 79 && mData.mEffectID[i] != 74)
+            // horrible hack to fix broken data in records
+            for (int i = 0; i < 4; ++i)
             {
-                mData.mAttributes[i] = -1;
-            }
+                if (mData.mEffectID[i] != ESM::MagicEffect::AbsorbAttribute
+                    && mData.mEffectID[i] != ESM::MagicEffect::DamageAttribute
+                    && mData.mEffectID[i] != ESM::MagicEffect::DrainAttribute
+                    && mData.mEffectID[i] != ESM::MagicEffect::FortifyAttribute
+                    && mData.mEffectID[i] != ESM::MagicEffect::RestoreAttribute)
+                {
+                    mData.mAttributes[i] = ESM::RefId();
+                }
 
-            // is this relevant in cycle from 0 to 4?
-            if (mData.mEffectID[i] != 89 && mData.mEffectID[i] != 26 && mData.mEffectID[i] != 21
-                && mData.mEffectID[i] != 83 && mData.mEffectID[i] != 78)
-            {
-                mData.mSkills[i] = -1;
+                // is this relevant in cycle from 0 to 4?
+                if (mData.mEffectID[i] != ESM::MagicEffect::AbsorbSkill
+                    && mData.mEffectID[i] != ESM::MagicEffect::DamageSkill
+                    && mData.mEffectID[i] != ESM::MagicEffect::DrainSkill
+                    && mData.mEffectID[i] != ESM::MagicEffect::FortifySkill
+                    && mData.mEffectID[i] != ESM::MagicEffect::RestoreSkill)
+                {
+                    mData.mSkills[i] = ESM::RefId();
+                }
             }
         }
     }
@@ -88,11 +167,30 @@ namespace ESM
             return;
         }
 
-        esm.writeHNCString("MODL", mModel);
+        esm.writeHNCString("MODL", mModel.getOriginal());
         esm.writeHNOCString("FNAM", mName);
-        esm.writeNamedComposite("IRDT", mData);
+        if (esm.getFormatVersion() <= MaxIngredientIndexFormatVersion)
+        {
+            EsmIRDTstruct bin;
+            toBinary(mData, bin);
+            esm.writeNamedComposite("IRDT", bin);
+        }
+        else
+        {
+            ValueAndWeight bin{ .mWeight = mData.mWeight, .mValue = mData.mValue };
+            esm.writeNamedComposite("IRDT", bin);
+            int max = 4;
+            while (max > 0 && mData.mEffectID[max - 1].empty())
+                --max;
+            for (int i = 0; i < max; ++i)
+            {
+                esm.writeHNRefId("ENID", mData.mEffectID[i]);
+                esm.writeHNORefId("ENSK", mData.mSkills[i]);
+                esm.writeHNORefId("ENAT", mData.mAttributes[i]);
+            }
+        }
         esm.writeHNOCRefId("SCRI", mScript);
-        esm.writeHNOCString("ITEX", mIcon);
+        esm.writeHNOCString("ITEX", mIcon.getOriginal());
     }
 
     void Ingredient::blank()
@@ -102,9 +200,9 @@ namespace ESM
         mData.mValue = 0;
         for (int i = 0; i < 4; ++i)
         {
-            mData.mEffectID[i] = 0;
-            mData.mSkills[i] = 0;
-            mData.mAttributes[i] = 0;
+            mData.mEffectID[i] = ESM::MagicEffect::WaterBreathing;
+            mData.mSkills[i] = ESM::RefId();
+            mData.mAttributes[i] = ESM::RefId();
         }
 
         mName.clear();

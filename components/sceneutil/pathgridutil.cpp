@@ -1,9 +1,9 @@
 #include "pathgridutil.hpp"
 
 #include <osg/Geometry>
-#include <osg/Material>
 
 #include <components/esm3/loadpgrd.hpp>
+#include <components/sceneutil/material.hpp>
 
 #include <limits>
 
@@ -139,7 +139,6 @@ namespace SceneUtil
                 gridGeometry->addPrimitiveSet(pointIndices);
             if (!lineIndices->empty())
                 gridGeometry->addPrimitiveSet(lineIndices);
-            gridGeometry->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
         }
 
         template <class T>
@@ -187,7 +186,6 @@ namespace SceneUtil
             wireframeGeometry->setVertexArray(vertices);
             wireframeGeometry->setColorArray(colors, osg::Array::BIND_PER_VERTEX);
             wireframeGeometry->addPrimitiveSet(indices);
-            wireframeGeometry->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
         }
     }
 
@@ -217,8 +215,8 @@ namespace SceneUtil
                     vertexCount, pointIndexCount, edgeIndexCount, gridGeometry, pathgrid);
         }
 
-        osg::ref_ptr<osg::Material> material = new osg::Material;
-        material->setColorMode(osg::Material::AMBIENT_AND_DIFFUSE);
+        osg::ref_ptr<SceneUtil::Material> material = new SceneUtil::Material;
+        material->setVertexColorMode(SceneUtil::VertexColorModes::AmbientAndDiffuse);
         gridGeometry->getOrCreateStateSet()->setAttribute(material);
 
         return gridGeometry;

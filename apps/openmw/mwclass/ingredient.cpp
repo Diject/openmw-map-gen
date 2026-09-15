@@ -40,7 +40,7 @@ namespace MWClass
         }
     }
 
-    std::string_view Ingredient::getModel(const MWWorld::ConstPtr& ptr) const
+    VFS::Path::NormalizedView Ingredient::getModel(const MWWorld::ConstPtr& ptr) const
     {
         return getClassModel<ESM::Ingredient>(ptr);
     }
@@ -71,7 +71,7 @@ namespace MWClass
 
     std::unique_ptr<MWWorld::Action> Ingredient::use(const MWWorld::Ptr& ptr, bool force) const
     {
-        if (ptr.get<ESM::Ingredient>()->mBase->mData.mEffectID[0] < 0)
+        if (ptr.get<ESM::Ingredient>()->mBase->mData.mEffectID[0].empty())
             return std::make_unique<MWWorld::NullAction>();
         std::unique_ptr<MWWorld::Action> action = std::make_unique<MWWorld::ActionEat>(ptr);
 
@@ -92,11 +92,11 @@ namespace MWClass
         return sound;
     }
 
-    const std::string& Ingredient::getInventoryIcon(const MWWorld::ConstPtr& ptr) const
+    VFS::Path::NormalizedView Ingredient::getInventoryIcon(const MWWorld::ConstPtr& ptr) const
     {
         const MWWorld::LiveCellRef<ESM::Ingredient>* ref = ptr.get<ESM::Ingredient>();
 
-        return ref->mBase->mIcon;
+        return ref->mBase->mIcon.getNormalized();
     }
 
     MWGui::ToolTipInfo Ingredient::getToolTipInfo(const MWWorld::ConstPtr& ptr, int count) const
@@ -106,7 +106,7 @@ namespace MWClass
         MWGui::ToolTipInfo info;
         std::string_view name = getName(ptr);
         info.caption = MyGUI::TextIterator::toTagsString(MyGUI::UString(name)) + MWGui::ToolTips::getCountString(count);
-        info.icon = ref->mBase->mIcon;
+        info.icon = ref->mBase->mIcon.getOriginal();
 
         std::string text;
 
@@ -131,12 +131,12 @@ namespace MWClass
         MWGui::Widgets::SpellEffectList list;
         for (int i = 0; i < 4; ++i)
         {
-            if (ref->mBase->mData.mEffectID[i] < 0)
+            if (ref->mBase->mData.mEffectID[i].empty())
                 continue;
             MWGui::Widgets::SpellEffectParams params;
-            params.mEffectID = static_cast<short>(ref->mBase->mData.mEffectID[i]);
-            params.mAttribute = ESM::Attribute::indexToRefId(ref->mBase->mData.mAttributes[i]);
-            params.mSkill = ESM::Skill::indexToRefId(ref->mBase->mData.mSkills[i]);
+            params.mEffectID = ref->mBase->mData.mEffectID[i];
+            params.mAttribute = ref->mBase->mData.mAttributes[i];
+            params.mSkill = ref->mBase->mData.mSkills[i];
             params.mKnown = alchemySkill >= fWortChanceValue * (i + 1);
 
             list.push_back(params);

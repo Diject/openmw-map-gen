@@ -1,14 +1,16 @@
 #include "transparentpass.hpp"
 
+#include "water.hpp"
+
 #include <osg/AlphaFunc>
 #include <osg/BlendFunc>
-#include <osg/Material>
 #include <osg/Texture2D>
 #include <osg/Texture2DArray>
 
 #include <osgUtil/RenderStage>
 
 #include <components/sceneutil/depth.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
@@ -32,7 +34,7 @@ namespace MWRender
         constexpr osg::StateAttribute::OverrideValue modeOff = osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE;
         constexpr osg::StateAttribute::OverrideValue modeOn = osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE;
 
-        mStateSet->setTextureAttributeAndModes(0, dummyTexture);
+        mStateSet->setTextureAttribute(0, dummyTexture);
 
         Shader::ShaderManager::DefineMap defines;
         Stereo::shaderStereoDefines(defines);
@@ -40,16 +42,12 @@ namespace MWRender
         mStateSet->setAttributeAndModes(new osg::BlendFunc, modeOff);
         mStateSet->setAttributeAndModes(shaderManager.getProgram("depthclipped", defines), modeOn);
         mStateSet->setAttributeAndModes(new SceneUtil::AutoDepth, modeOn);
-
-        for (unsigned int unit = 1; unit < 8; ++unit)
-            mStateSet->setTextureMode(unit, GL_TEXTURE_2D, modeOff);
     }
 
     void TransparentDepthBinCallback::drawImplementation(
         osgUtil::RenderBin* bin, osg::RenderInfo& renderInfo, osgUtil::RenderLeaf*& previous)
     {
         osg::State& state = *renderInfo.getState();
-        osg::GLExtensions* ext = state.get<osg::GLExtensions>();
 
         bool validFbo = false;
         unsigned int frameId = state.getFrameStamp()->getFrameNumber() % 2;
@@ -69,31 +67,6 @@ namespace MWRender
         {
             bin->drawImplementation(renderInfo, previous);
             return;
-        }
-
-        const osg::Texture* tex
-            = opaqueFbo->getAttachment(osg::FrameBufferObject::BufferComponent::PACKED_DEPTH_STENCIL_BUFFER)
-                  .getTexture();
-
-        if (Stereo::getMultiview())
-        {
-            if (!mMultiviewResolve[frameId])
-            {
-                mMultiviewResolve[frameId] = std::make_unique<Stereo::MultiviewFramebufferResolve>(
-                    msaaFbo ? msaaFbo : fbo, opaqueFbo, GL_DEPTH_BUFFER_BIT);
-            }
-            else
-            {
-                mMultiviewResolve[frameId]->setResolveFbo(opaqueFbo);
-                mMultiviewResolve[frameId]->setMsaaFbo(msaaFbo ? msaaFbo : fbo);
-            }
-            mMultiviewResolve[frameId]->resolveImplementation(state);
-        }
-        else
-        {
-            opaqueFbo->apply(state, osg::FrameBufferObject::DRAW_FRAMEBUFFER);
-            ext->glBlitFramebuffer(0, 0, tex->getTextureWidth(), tex->getTextureHeight(), 0, 0, tex->getTextureWidth(),
-                tex->getTextureHeight(), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
         }
 
         msaaFbo ? msaaFbo->apply(state, osg::FrameBufferObject::DRAW_FRAMEBUFFER)
@@ -120,14 +93,17 @@ namespace MWRender
             osgUtil::RenderLeaf* rl = *rit;
             const osg::StateSet* ss = rl->_parent->getStateSet();
 
-            if (rl->_drawable->getNodeMask() == Mask_ParticleSystem || rl->_drawable->getNodeMask() == Mask_Effect)
+            if (rl->_drawable->getNodeMask() == Mask_ParticleSystem)
+                continue;
+
+            if (mWater && rl->_drawable.get() == mWater->getDrawable())
                 continue;
 
             if (ss->getAttribute(osg::StateAttribute::MATERIAL))
             {
-                const osg::Material* mat
-                    = static_cast<const osg::Material*>(ss->getAttribute(osg::StateAttribute::MATERIAL));
-                if (mat->getDiffuse(osg::Material::FRONT).a() < 0.5)
+                const SceneUtil::Material* mat
+                    = static_cast<const SceneUtil::Material*>(ss->getAttribute(osg::StateAttribute::MATERIAL));
+                if (mat->getDiffuse().a() < 0.5)
                     continue;
             }
 

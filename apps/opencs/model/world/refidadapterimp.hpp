@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <map>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -37,6 +36,11 @@
 #include "refidadapter.hpp"
 #include "refiddata.hpp"
 #include "universalid.hpp"
+
+namespace ESM
+{
+    struct MagicEffect;
+}
 
 namespace CSMWorld
 {
@@ -203,7 +207,7 @@ namespace CSMWorld
             data.getRecord(RefIdData::LocalIndex(index, BaseRefIdAdapter<RecordT>::getType())));
 
         if (column == mModel.mModel)
-            return QString::fromUtf8(record.get().mModel.c_str());
+            return QString::fromStdString(record.get().mModel.getOriginal());
 
         if (column == mModel.mPersistence)
             return (record.get().mRecordFlags & ESM::FLAG_Persistent) != 0;
@@ -352,7 +356,7 @@ namespace CSMWorld
             data.getRecord(RefIdData::LocalIndex(index, BaseRefIdAdapter<RecordT>::getType())));
 
         if (column == mInventory.mIcon)
-            return QString::fromUtf8(record.get().mIcon.c_str());
+            return QString::fromStdString(record.get().mIcon.getOriginal());
 
         if (column == mInventory.mWeight)
             return record.get().mData.mWeight;
@@ -427,12 +431,20 @@ namespace CSMWorld
         ///< If the data type does not match an exception is thrown.
     };
 
+    template <typename ESXRecordT>
+    class IdCollection;
+
     class IngredEffectRefIdAdapter : public NestedRefIdAdapterBase
     {
         UniversalId::Type mType;
+        const IdCollection<ESM::MagicEffect>& mMagicEffects;
 
     public:
-        IngredEffectRefIdAdapter();
+        IngredEffectRefIdAdapter(const IdCollection<ESM::MagicEffect>& magicEffects)
+            : mType(UniversalId::Type_Ingredient)
+            , mMagicEffects(magicEffects)
+        {
+        }
         IngredEffectRefIdAdapter(const IngredEffectRefIdAdapter&) = delete;
         IngredEffectRefIdAdapter& operator=(const IngredEffectRefIdAdapter&) = delete;
         ~IngredEffectRefIdAdapter() override = default;
@@ -1105,8 +1117,9 @@ namespace CSMWorld
         EffectsRefIdAdapter& operator=(const EffectsRefIdAdapter&);
 
     public:
-        EffectsRefIdAdapter(UniversalId::Type type)
-            : mType(type)
+        EffectsRefIdAdapter(UniversalId::Type type, const IdCollection<ESM::MagicEffect>& magicEffects)
+            : EffectsListAdapter<ESXRecordT>(magicEffects)
+            , mType(type)
         {
         }
 

@@ -3,12 +3,12 @@
 #include <QFile>
 
 #include <osg/ClipPlane>
-#include <osg/Material>
 #include <osg/PositionAttitudeTransform>
 #include <osgUtil/CullVisitor>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/visitor.hpp>
 
 #include "../../model/prefs/state.hpp"
@@ -97,6 +97,7 @@ namespace CSVRender
         auto markerData = file.readAll();
 
         mResourceSystem->getSceneManager()->loadSelectionMarker(mBaseNode, markerData.data(), markerData.size());
+        mResourceSystem->getSceneManager()->recreateShaders(mBaseNode);
 
         osg::ref_ptr<osg::StateSet> baseNodeState = mBaseNode->getOrCreateStateSet();
         baseNodeState->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
@@ -109,9 +110,11 @@ namespace CSVRender
         for (const auto& [name, node] : mMarkerNodes)
         {
             osg::StateSet* state = node->getStateSet();
-            osg::Material* mat = static_cast<osg::Material*>(state->getAttribute(osg::StateAttribute::MATERIAL));
-            osg::Vec4f emis = mat->getEmission(osg::Material::FRONT_AND_BACK);
-            mat->setEmission(osg::Material::FRONT_AND_BACK, emis / 4);
+            SceneUtil::Material* mat
+                = static_cast<SceneUtil::Material*>(state->getAttribute(osg::StateAttribute::MATERIAL));
+            osg::Vec4f emis = mat->getEmission();
+            mat->setEmission(emis / 4);
+            mat->updateStateSet(state);
             mOriginalColors.emplace(name, emis);
         }
 
@@ -255,7 +258,7 @@ namespace CSVRender
             return;
 
         for (const auto& [nodeName, mat] : mLastHighlightedNodes)
-            mat->setEmission(osg::Material::FRONT_AND_BACK, mat->getEmission(osg::Material::FRONT_AND_BACK) / 4);
+            mat->setEmission(mat->getEmission() / 4);
 
         mLastHighlightedNodes.clear();
         mLastHitNode.clear();
@@ -296,8 +299,9 @@ namespace CSVRender
             osg::StateSet* state = matNode->getStateSet();
             osg::StateAttribute* matAttr = state->getAttribute(osg::StateAttribute::MATERIAL);
 
-            osg::Material* mat = static_cast<osg::Material*>(matAttr);
-            mat->setEmission(osg::Material::FRONT_AND_BACK, mOriginalColors[materialNodeName]);
+            SceneUtil::Material* mat = static_cast<SceneUtil::Material*>(matAttr);
+            mat->setEmission(mOriginalColors[materialNodeName]);
+            mat->updateStateSet(state);
 
             mLastHighlightedNodes.emplace(std::make_pair(matNode->getName(), mat));
         }

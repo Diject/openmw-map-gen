@@ -20,20 +20,19 @@ target_link_libraries(openmw-navmeshtool-lib
     components
 )
 
+if (WIN32)
+    target_sources(openmw-navmeshtool PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
+endif()
+
 if (BUILD_WITH_CODE_COVERAGE)
     target_compile_options(openmw-navmeshtool PRIVATE --coverage)
     target_link_libraries(openmw-navmeshtool gcov)
 endif()
 
-if (WIN32)
-    install(TARGETS openmw-navmeshtool RUNTIME DESTINATION ".")
+if (NOT APPLE)
+    install(TARGETS openmw-navmeshtool)
 endif()
 
 if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)
-    target_precompile_headers(openmw-navmeshtool PRIVATE
-        <algorithm>
-        <memory>
-        <string>
-        <vector>
-    )
+    target_precompile_headers(openmw-navmeshtool REUSE_FROM components)
 endif()

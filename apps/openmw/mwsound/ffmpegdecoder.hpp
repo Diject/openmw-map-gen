@@ -35,6 +35,8 @@ extern "C"
 
 namespace MWSound
 {
+    class HeadCache;
+
     struct AVIOContextDeleter
     {
         void operator()(AVIOContext* ptr) const;
@@ -91,6 +93,12 @@ namespace MWSound
 
         bool getNextPacket();
 
+        // Opens a format context over mDataStream and selects a usable audio
+        // stream. Returns false on failure, leaving the stream position
+        // undefined; the caller rewinds before another attempt.
+        bool openContext(const char* name, const AVInputFormat* fmt, bool limitProbe, AVIOContextPtr& ioCtx,
+            AVFormatContextPtr& formatCtx, AVStream**& stream);
+
         Files::IStreamPtr mDataStream;
 
         static int readPacket(void* userData, uint8_t* buf, int bufSize);
@@ -118,11 +126,15 @@ namespace MWSound
         FFmpegDecoder(const FFmpegDecoder& rhs);
 
     public:
-        explicit FFmpegDecoder(const VFS::Manager* vfs);
+        explicit FFmpegDecoder(const VFS::Manager* vfs, HeadCache* headCache);
 
         virtual ~FFmpegDecoder();
 
         friend class SoundManager;
+        friend class WarmQueue;
+
+    private:
+        HeadCache* mHeadCache;
     };
 }
 

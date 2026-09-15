@@ -16,10 +16,13 @@
 -- @field [parent=#interfaces] scripts.omw.camera.camera#scripts.omw.camera.camera Camera
 
 ---
--- @field [parent=#interfaces] scripts.omw.combat.interface#scripts.omw.combat.interface Combat
+-- @field [parent=#interfaces] scripts.omw.combat.interface_local#scripts.omw.combat.interface_local Combat
 
 ---
 -- @field [parent=#interfaces] scripts.omw.mwui.init#scripts.omw.mwui.init MWUI
+
+---
+-- @field [parent=#interfaces] scripts.omw.mechanics.projectiles#scripts.omw.mechanics.projectiles Projectiles
 
 ---
 -- @field [parent=#interfaces] scripts.omw.settings.player#scripts.omw.settings.player Settings
@@ -32,6 +35,9 @@
 
 ---
 -- @field [parent=#interfaces] scripts.omw.skillhandlers#scripts.omw.skillhandlers SkillProgression
+
+---
+-- @field [parent=#interfaces] scripts.omw.spellcasting.interface_local#scripts.omw.spellcasting.interface_local SpellCasting
 
 ---
 -- @field [parent=#interfaces] scripts.omw.crimes#scripts.omw.crimes Crimes

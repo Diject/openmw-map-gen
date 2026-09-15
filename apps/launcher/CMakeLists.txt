@@ -68,9 +68,9 @@ openmw_add_executable(openmw-launcher
 
 add_dependencies(openmw-launcher qm-files)
 
-if (WIN32)
-    INSTALL(TARGETS openmw-launcher RUNTIME DESTINATION ".")
-endif (WIN32)
+if (NOT APPLE)
+    INSTALL(TARGETS openmw-launcher)
+endif ()
 
 target_link_libraries(openmw-launcher
     SDL2::SDL2
@@ -79,6 +79,10 @@ target_link_libraries(openmw-launcher
 )
 
 target_link_libraries(openmw-launcher Qt::Widgets Qt::Core Qt::Svg)
+
+if (WIN32)
+    target_sources(openmw-launcher PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
+endif()
 
 if (BUILD_WITH_CODE_COVERAGE)
     target_compile_options(openmw-launcher PRIVATE --coverage)
