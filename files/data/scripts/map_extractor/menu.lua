@@ -146,7 +146,7 @@ local layout = {
 }
 
 
-local menu = ui.create(layout)
+local menu = ui.create(layout, {noWarnUnused = true})
 
 
 return {
