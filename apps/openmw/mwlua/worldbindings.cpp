@@ -5,9 +5,16 @@
 #include <components/esm3/loadarmo.hpp>
 #include <components/esm3/loadbook.hpp>
 #include <components/esm3/loadclot.hpp>
+#include <components/esm3/loadcont.hpp>
+#include <components/esm3/loadcrea.hpp>
+#include <components/esm3/loaddoor.hpp>
+#include <components/esm3/loadench.hpp>
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadmisc.hpp>
 #include <components/esm3/loadnpc.hpp>
+#include <components/esm3/loadprob.hpp>
+#include <components/esm3/loadspel.hpp>
+#include <components/esm3/loadstat.hpp>
 #include <components/esm3/loadweap.hpp>
 #include <components/lua/luastate.hpp>
 #include <components/misc/finitevalues.hpp>
@@ -193,6 +200,10 @@ namespace MWLua
                 checkGameInitialized(lua);
                 return MWBase::Environment::get().getESMStore()->insert(book);
             },
+            [lua = context.mLua](const ESM::Enchantment& enchantment) -> const ESM::Enchantment* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(enchantment);
+            },
             [lua = context.mLua](const ESM::Miscellaneous& misc) -> const ESM::Miscellaneous* {
                 checkGameInitialized(lua);
                 return MWBase::Environment::get().getESMStore()->insert(misc);
@@ -201,6 +212,18 @@ namespace MWLua
                 checkGameInitialized(lua);
                 return MWBase::Environment::get().getESMStore()->insert(potion);
             },
+            [lua = context.mLua](const ESM::Probe& probe) -> const ESM::Probe* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(probe);
+            },
+            [lua = context.mLua](const ESM::Spell& spell) -> const ESM::Spell* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(spell);
+            },
+            [lua = context.mLua](const ESM::Static& stat) -> const ESM::Static* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(stat);
+            },
             [lua = context.mLua](const ESM::NPC& npc) -> const ESM::NPC* {
                 checkGameInitialized(lua);
                 if (npc.mId.empty())
@@ -208,6 +231,18 @@ namespace MWLua
                 ESM::NPC copy = npc;
                 copy.mId = {};
                 return MWBase::Environment::get().getESMStore()->insert(copy);
+            },
+            [lua = context.mLua](const ESM::Creature& crea) -> const ESM::Creature* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(crea);
+            },
+            [lua = context.mLua](const ESM::Container& cont) -> const ESM::Container* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(cont);
+            },
+            [lua = context.mLua](const ESM::Door& cont) -> const ESM::Door* {
+                checkGameInitialized(lua);
+                return MWBase::Environment::get().getESMStore()->insert(cont);
             },
             [lua = context.mLua](const ESM::Weapon& weapon) -> const ESM::Weapon* {
                 checkGameInitialized(lua);

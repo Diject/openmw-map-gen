@@ -9,7 +9,6 @@
 #include <osg/Matrixf>
 #include <osg/Sequence>
 #include <osg/Switch>
-#include <osg/TexGen>
 #include <osg/TexMat>
 #include <osg/ValueObject>
 
@@ -41,8 +40,6 @@
 #include <osg/PolygonMode>
 #include <osg/PolygonOffset>
 #include <osg/Stencil>
-#include <osg/TexEnv>
-#include <osg/TexEnvCombine>
 #include <osg/Texture2D>
 
 #include <components/bgsm/file.hpp>
@@ -282,14 +279,14 @@ namespace NifOsg
     {
     public:
         /// @param filename used for warning messages.
-        LoaderImpl(const std::filesystem::path& filename, unsigned int ver, unsigned int userver, unsigned int bethver)
+        LoaderImpl(const VFS::Path::Normalized& filename, unsigned int ver, unsigned int userver, unsigned int bethver)
             : mFilename(filename)
             , mVersion(ver)
             , mUserVersion(userver)
             , mBethVersion(bethver)
         {
         }
-        std::filesystem::path mFilename;
+        VFS::Path::Normalized mFilename;
         unsigned int mVersion, mUserVersion, mBethVersion;
         Resource::BgsmFileManager* mMaterialManager{ nullptr };
         Resource::ImageManager* mImageManager{ nullptr };
@@ -329,7 +326,7 @@ namespace NifOsg
             }
 
             Nif::ExtraList extraList = seq->getExtraList();
-            if (extraList.empty())
+            if (extraList.empty() || extraList[0].empty())
             {
                 Log(Debug::Warning) << "NIFFile Warning: NiSequenceStreamHelper has no text keys. File: "
                                     << nif.getFilename();
@@ -350,6 +347,9 @@ namespace NifOsg
             for (size_t i = 1; i < extraList.size() && !ctrl.empty(); i++, (ctrl = ctrl->mNext))
             {
                 Nif::ExtraPtr extra = extraList[i];
+                if (extra.empty())
+                    continue;
+
                 if (extra->mRecordType != Nif::RC_NiStringExtraData
                     || ctrl->mRecordType != Nif::RC_NiKeyframeController)
                 {
@@ -603,17 +603,9 @@ namespace NifOsg
                 return false;
             }
 
-            osg::ref_ptr<osg::TexGen> texGen(new osg::TexGen);
             switch (textureEffect->mCoordGenType)
             {
-                case Nif::NiTextureEffect::CoordGenType::WorldParallel:
-                    texGen->setMode(osg::TexGen::OBJECT_LINEAR);
-                    break;
-                case Nif::NiTextureEffect::CoordGenType::WorldPerspective:
-                    texGen->setMode(osg::TexGen::EYE_LINEAR);
-                    break;
                 case Nif::NiTextureEffect::CoordGenType::SphereMap:
-                    texGen->setMode(osg::TexGen::SPHERE_MAP);
                     break;
                 default:
                     Log(Debug::Info) << "Unhandled NiTextureEffect CoordGenType "
@@ -622,13 +614,10 @@ namespace NifOsg
             }
 
             const unsigned int uvSet = 0;
-            const unsigned int texUnit = 3; // FIXME
             std::vector<unsigned int> boundTextures;
             boundTextures.resize(3); // Dummy vector for attachNiSourceTexture
             attachNiSourceTexture("envMap", textureEffect->mTexture.getPtr(), textureEffect->wrapS(),
                 textureEffect->wrapT(), uvSet, stateset, boundTextures);
-            stateset->setTextureAttributeAndModes(texUnit, texGen, osg::StateAttribute::ON);
-            stateset->setTextureAttributeAndModes(texUnit, createEmissiveTexEnv(), osg::StateAttribute::ON);
 
             stateset->addUniform(new osg::Uniform("envMapColor", osg::Vec4f(1, 1, 1, 1)));
             return true;
@@ -696,6 +685,9 @@ namespace NifOsg
 
             for (const auto& e : nifNode->getExtraList())
             {
+                if (e.empty())
+                    continue;
+
                 if (e->mRecordType == Nif::RC_NiTextKeyExtraData && args.mTextKeys)
                 {
                     const Nif::NiTextKeyExtraData* tk = static_cast<const Nif::NiTextKeyExtraData*>(e.getPtr());
@@ -1481,6 +1473,12 @@ namespace NifOsg
             if (niGeometry->mData.empty())
                 return;
 
+            const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
+
+            const auto& vertices = niGeometryData->mVertices;
+            if (vertices.empty())
+                return;
+
             bool hasPartitions = false;
             if (!niGeometry->mSkin.empty())
             {
@@ -1508,7 +1506,6 @@ namespace NifOsg
                 }
             }
 
-            const Nif::NiGeometryData* niGeometryData = niGeometry->mData.getPtr();
             if (!hasPartitions)
             {
                 if (niGeometry->mRecordType == Nif::RC_NiTriShape || nifNode->mRecordType == Nif::RC_BSLODTriShape)
@@ -1546,11 +1543,10 @@ namespace NifOsg
                 }
             }
 
-            const auto& vertices = niGeometryData->mVertices;
             const auto& normals = niGeometryData->mNormals;
             const auto& colors = niGeometryData->mColors;
-            if (!vertices.empty())
-                geometry->setVertexArray(new osg::Vec3Array(static_cast<unsigned>(vertices.size()), vertices.data()));
+
+            geometry->setVertexArray(new osg::Vec3Array(static_cast<unsigned>(vertices.size()), vertices.data()));
             if (!normals.empty())
                 geometry->setNormalArray(new osg::Vec3Array(static_cast<unsigned>(normals.size()), normals.data()),
                     osg::Array::BIND_PER_VERTEX);
@@ -1599,7 +1595,7 @@ namespace NifOsg
             osg::ref_ptr<osg::Geometry> geom(new osg::Geometry);
             handleNiGeometryData(nifNode, parent, geom, parentNode, composite, boundTextures, animflags);
             // If the record had no valid geometry data in it, early-out
-            if (geom->empty())
+            if (geom->empty() || geom->getVertexArray() == nullptr)
                 return;
 
             osg::ref_ptr<osg::Drawable> drawable = geom;
@@ -1615,16 +1611,15 @@ namespace NifOsg
                 const Nif::NiAVObjectList& bones = skin->mBones;
 
                 // Assign bone weights
-                std::vector<SceneUtil::RigGeometry::BoneInfo> boneInfo;
-                std::vector<SceneUtil::RigGeometry::VertexWeights> influences;
-                boneInfo.resize(bones.size());
-                influences.resize(bones.size());
+                std::vector<SceneUtil::RigGeometry::BoneInfo> boneInfo(bones.size());
+                std::vector<SceneUtil::RigGeometry::BoneWeights> influences(geom->getVertexArray()->getNumElements());
                 for (std::size_t i = 0; i < bones.size(); ++i)
                 {
                     boneInfo[i].mName = Misc::StringUtils::lowerCase(bones[i].getPtr()->mName);
                     boneInfo[i].mInvBindMatrix = data->mBones[i].mTransform.toMatrix();
                     boneInfo[i].mBoundSphere = data->mBones[i].mBoundSphere;
-                    influences[i] = data->mBones[i].mWeights;
+                    for (const auto& [vertex, weight] : data->mBones[i].mWeights)
+                        influences.at(vertex).emplace_back(i, weight);
                 }
                 rig->setBoneInfo(std::move(boneInfo));
                 rig->setInfluences(influences);
@@ -1747,7 +1742,7 @@ namespace NifOsg
                 if (hasColors)
                     colors.emplace_back(elem.mVertColor[0], elem.mVertColor[1], elem.mVertColor[2], elem.mVertColor[3]);
                 if (hasUV)
-                    uvlist.emplace_back(halfToFloat(elem.mUV[0]), 1.0f - halfToFloat(elem.mUV[1]));
+                    uvlist.emplace_back(halfToFloat(elem.mUV[0]), halfToFloat(elem.mUV[1]));
             }
 
             if (!vertices.empty())
@@ -2051,23 +2046,8 @@ namespace NifOsg
             }
 
             image->setMipmapLevels(mipmapOffsets);
-            image->flipVertical();
 
             return image;
-        }
-
-        static osg::ref_ptr<osg::TexEnvCombine> createEmissiveTexEnv()
-        {
-            osg::ref_ptr<osg::TexEnvCombine> texEnv(new osg::TexEnvCombine);
-            // Sum the previous colour and the emissive colour.
-            texEnv->setCombine_RGB(osg::TexEnvCombine::ADD);
-            texEnv->setSource0_RGB(osg::TexEnvCombine::PREVIOUS);
-            texEnv->setSource1_RGB(osg::TexEnvCombine::TEXTURE);
-            // Keep the previous alpha.
-            texEnv->setCombine_Alpha(osg::TexEnvCombine::REPLACE);
-            texEnv->setSource0_Alpha(osg::TexEnvCombine::PREVIOUS);
-            texEnv->setOperand0_Alpha(osg::TexEnvCombine::SRC_ALPHA);
-            return texEnv;
         }
 
         static void handleDepthFlags(osg::StateSet* stateset, bool depthTest, bool depthWrite)
@@ -2132,7 +2112,6 @@ namespace NifOsg
                         }
                     }
 
-                    const auto texUnit = static_cast<unsigned>(boundTextures.size());
                     if (tex.mEnabled)
                     {
                         if (tex.mSourceTexture.empty() && texprop->mController.empty())
@@ -2156,72 +2135,12 @@ namespace NifOsg
                         attachTexture(textureName, nullptr, true, true, 0, stateset, boundTextures);
                     }
 
-                    if (i == Nif::NiTexturingProperty::GlowTexture)
+                    if (i == Nif::NiTexturingProperty::BumpTexture)
                     {
-                        stateset->setTextureAttributeAndModes(texUnit, createEmissiveTexEnv(), osg::StateAttribute::ON);
-                    }
-                    else if (i == Nif::NiTexturingProperty::DarkTexture)
-                    {
-                        osg::TexEnv* texEnv = new osg::TexEnv;
-                        // Modulate both the colour and the alpha with the dark map.
-                        texEnv->setMode(osg::TexEnv::MODULATE);
-                        stateset->setTextureAttributeAndModes(texUnit, texEnv, osg::StateAttribute::ON);
-                    }
-                    else if (i == Nif::NiTexturingProperty::DetailTexture)
-                    {
-                        osg::TexEnvCombine* texEnv = new osg::TexEnvCombine;
-                        // Modulate previous colour...
-                        texEnv->setCombine_RGB(osg::TexEnvCombine::MODULATE);
-                        texEnv->setSource0_RGB(osg::TexEnvCombine::PREVIOUS);
-                        texEnv->setOperand0_RGB(osg::TexEnvCombine::SRC_COLOR);
-                        // with the detail map's colour,
-                        texEnv->setSource1_RGB(osg::TexEnvCombine::TEXTURE);
-                        texEnv->setOperand1_RGB(osg::TexEnvCombine::SRC_COLOR);
-                        // and a twist:
-                        texEnv->setScale_RGB(2.f);
-                        // Keep the previous alpha.
-                        texEnv->setCombine_Alpha(osg::TexEnvCombine::REPLACE);
-                        texEnv->setSource0_Alpha(osg::TexEnvCombine::PREVIOUS);
-                        texEnv->setOperand0_Alpha(osg::TexEnvCombine::SRC_ALPHA);
-                        stateset->setTextureAttributeAndModes(texUnit, texEnv, osg::StateAttribute::ON);
-                    }
-                    else if (i == Nif::NiTexturingProperty::BumpTexture)
-                    {
-                        // Bump maps offset the environment map.
-                        // Set this texture to Off by default since we can't render it with the fixed-function pipeline
-                        stateset->setTextureMode(texUnit, GL_TEXTURE_2D, osg::StateAttribute::OFF);
                         osg::Matrix2 bumpMapMatrix(texprop->mBumpMapMatrix.x(), texprop->mBumpMapMatrix.y(),
                             texprop->mBumpMapMatrix.z(), texprop->mBumpMapMatrix.w());
                         stateset->addUniform(new osg::Uniform("bumpMapMatrix", bumpMapMatrix));
                         stateset->addUniform(new osg::Uniform("envMapLumaBias", texprop->mEnvMapLumaBias));
-                    }
-                    else if (i == Nif::NiTexturingProperty::GlossTexture)
-                    {
-                        // A gloss map is an environment map mask.
-                        // Gloss maps are only implemented in the object shaders as well.
-                        stateset->setTextureMode(texUnit, GL_TEXTURE_2D, osg::StateAttribute::OFF);
-                    }
-                    else if (i == Nif::NiTexturingProperty::DecalTexture)
-                    {
-                        // This is only an inaccurate imitation of the original implementation,
-                        // see https://github.com/niftools/nifskope/issues/184
-
-                        osg::TexEnvCombine* texEnv = new osg::TexEnvCombine;
-                        // Interpolate to the decal texture's colour...
-                        texEnv->setCombine_RGB(osg::TexEnvCombine::INTERPOLATE);
-                        texEnv->setSource0_RGB(osg::TexEnvCombine::TEXTURE);
-                        texEnv->setOperand0_RGB(osg::TexEnvCombine::SRC_COLOR);
-                        // ...from the previous colour...
-                        texEnv->setSource1_RGB(osg::TexEnvCombine::PREVIOUS);
-                        texEnv->setOperand1_RGB(osg::TexEnvCombine::SRC_COLOR);
-                        // using the decal texture's alpha as the factor.
-                        texEnv->setSource2_RGB(osg::TexEnvCombine::TEXTURE);
-                        texEnv->setOperand2_RGB(osg::TexEnvCombine::SRC_ALPHA);
-                        // Keep the previous alpha.
-                        texEnv->setCombine_Alpha(osg::TexEnvCombine::REPLACE);
-                        texEnv->setSource0_Alpha(osg::TexEnvCombine::PREVIOUS);
-                        texEnv->setOperand0_Alpha(osg::TexEnvCombine::SRC_ALPHA);
-                        stateset->setTextureAttributeAndModes(texUnit, texEnv, osg::StateAttribute::ON);
                     }
                 }
             }
@@ -2563,9 +2482,7 @@ namespace NifOsg
                 case Nif::RC_BSShaderPPLightingProperty:
                 {
                     auto texprop = static_cast<const Nif::BSShaderPPLightingProperty*>(property);
-                    bool shaderRequired = true;
                     node->setUserValue("shaderPrefix", std::string(getBSShaderPrefix(texprop->mType)));
-                    node->setUserValue("shaderRequired", shaderRequired);
                     osg::StateSet* stateset = node->getOrCreateStateSet();
                     clearBoundTextures(stateset, boundTextures);
                     if (!texprop->mTextureSet.empty())
@@ -2579,10 +2496,8 @@ namespace NifOsg
                 case Nif::RC_BSShaderNoLightingProperty:
                 {
                     auto texprop = static_cast<const Nif::BSShaderNoLightingProperty*>(property);
-                    bool shaderRequired = true;
                     bool useFalloff = false;
                     node->setUserValue("shaderPrefix", std::string(getBSShaderPrefix(texprop->mType)));
-                    node->setUserValue("shaderRequired", shaderRequired);
                     osg::StateSet* stateset = node->getOrCreateStateSet();
                     clearBoundTextures(stateset, boundTextures);
                     if (!texprop->mFilename.empty())
@@ -2604,9 +2519,7 @@ namespace NifOsg
                 case Nif::RC_BSLightingShaderProperty:
                 {
                     auto texprop = static_cast<const Nif::BSLightingShaderProperty*>(property);
-                    bool shaderRequired = true;
                     node->setUserValue("shaderPrefix", std::string(getBSLightingShaderPrefix(texprop->mType)));
-                    node->setUserValue("shaderRequired", shaderRequired);
                     osg::StateSet* stateset = node->getOrCreateStateSet();
                     clearBoundTextures(stateset, boundTextures);
                     if (Bgsm::MaterialFilePtr material
@@ -2631,10 +2544,8 @@ namespace NifOsg
                 case Nif::RC_BSEffectShaderProperty:
                 {
                     auto texprop = static_cast<const Nif::BSEffectShaderProperty*>(property);
-                    bool shaderRequired = true;
                     // TODO: implement BSEffectShader as a shader
                     node->setUserValue("shaderPrefix", std::string("bs/nolighting"));
-                    node->setUserValue("shaderRequired", shaderRequired);
                     osg::StateSet* stateset = node->getOrCreateStateSet();
                     clearBoundTextures(stateset, boundTextures);
                     if (Bgsm::MaterialFilePtr material

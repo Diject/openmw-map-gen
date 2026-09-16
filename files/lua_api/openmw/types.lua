@@ -1,6 +1,6 @@
 ---
 -- Defines functions for specific types of game objects.
--- @context global|menu|local|player
+-- @context global|local|player
 -- @module types
 -- @usage local types = require('openmw.types')
 
@@ -330,12 +330,6 @@
 -- @return true if spell is active, false otherwise
 
 ---
--- If true, the actor has not used this power in the last 24h. Will return true for powers the actor does not have.
--- @function [parent=#ActorActiveSpells] canUsePower
--- @param self
--- @param #any spellOrId A @{openmw.core#Spell} or string record id.
-
----
 -- Remove an active spell based on active spell ID (see @{openmw_core#ActiveSpell.activeSpellId}). Can only be used in global scripts or on self. Can only be used to remove spells with the temporary flag set (see @{openmw_core#ActiveSpell.temporary}).
 -- @function [parent=#ActorActiveSpells] remove
 -- @param self
@@ -384,7 +378,7 @@
 -- @param openmw.core#GameObject actor
 -- @return #ActorSpells
 
---- List of spells with additional functions add/remove/clear (modification are allowed only in global scripts or on self).
+--- List of spells (modifications are only allowed in global scripts or on self).
 -- @type ActorSpells
 -- @usage -- print available spells
 -- local mySpells = types.Actor.spells(self)
@@ -422,6 +416,12 @@
 -- @function [parent=#ActorSpells] clear
 -- @param self
 
+---
+-- If true, the actor has not used this power in the last 24h. Will return true for powers the actor does not have.
+-- @function [parent=#ActorSpells] canUsePower
+-- @param self
+-- @param #any spellOrId A @{openmw.core#Spell} or string record ID.
+
 --- Values affect how much each attribute can be increased at level up, and are all reset to 0 upon level up.
 -- @type SkillIncreasesForAttributeStats
 -- @field #number agility Number of contributions to agility for the next level up.
@@ -439,27 +439,27 @@
 -- @field #number magic Number of contributions to magic specialization for the next level up.
 -- @field #number stealth Number of contributions to stealth specialization for the next level up.
 
----
+--- Value modification is delayed
 -- @type LevelStat
 -- @field #number current The actor's current level.
 -- @field #number progress The NPC's level progress.
 -- @field #SkillIncreasesForAttributeStats skillIncreasesForAttribute The NPC's attribute contributions towards the next level up. Values affect how much each attribute can be increased at level up.
 -- @field #SkillIncreasesForSpecializationStats skillIncreasesForSpecialization The NPC's attribute contributions towards the next level up. Values affect the graphic used on the level up screen.
 
----
+--- Value modification is delayed
 -- @type DynamicStat
 -- @field #number base
 -- @field #number current
 -- @field #number modifier
 
----
+--- Value modification is delayed
 -- @type AttributeStat
 -- @field #number base The actor's base attribute value.
 -- @field #number damage The amount the attribute has been damaged.
 -- @field #number modified The actor's current attribute value (read-only.)
 -- @field #number modifier The attribute's modifier.
 
----
+--- Value modification is delayed
 -- @type SkillStat
 -- @field #number base The NPC's base skill value.
 -- @field #number damage The amount the skill has been damaged.
@@ -467,11 +467,15 @@
 -- @field #number modifier The skill's modifier.
 -- @field #number progress [0-1] The NPC's skill progress.
 
----
+--- Value modification is delayed
 -- @type AIStat
 -- @field #number base The stat's base value.
 -- @field #number modifier The stat's modifier.
 -- @field #number modified The actor's current ai value (read-only.)
+
+--- Value modification is delayed
+-- @type ReputationStat
+-- @field #number current Current reputation value.
 
 ---
 -- @type DynamicStats
@@ -756,6 +760,7 @@
 -- @type NpcStats
 -- @extends #ActorStats
 -- @field #SkillStats skills
+-- @field #ReputationStat reputation
 
 
 --------------------------------------------------------------------------------
@@ -806,7 +811,7 @@
 
 ---
 -- @type ItemData
--- @field #number condition The item's current condition. Time remaining for lights. Uses left for repairs, lockpicks and probes. Current health for weapons and armor.
+-- @field #number condition The item's current condition. Time remaining for lights (setting this to `-1` will make it last forever). Uses left for repairs, lockpicks and probes. Current health for weapons and armor.
 -- @field #number enchantmentCharge The item's current enchantment charge. Unenchanted items will always return a value of `nil`. Setting this to `nil` will reset the charge of the item.
 -- @field #string soul The recordId of the item's current soul. Items without soul will always return a value of `nil`. Setting this to `nil` will remove the soul from the item.
 
@@ -818,6 +823,18 @@
 -- @type Creature
 -- @extends #Actor
 -- @field #Actor baseType @{#Actor}
+
+---
+-- Creates a @{#CreatureRecord} without adding it to the world database.
+-- Use @{openmw_world#(world).createRecord} to add the record to the world.
+-- @function [parent=#Creature] createRecordDraft
+-- @param #CreatureRecord creature A Lua table with the fields of a CreatureRecord, with an additional field `template` that accepts a @{#CreatureRecord} as a base.
+-- @return #CreatureRecord A strongly typed Creature record.
+-- @usage local creatureTemplate = types.Creature.records['mudcrab']
+-- local creatureTable = {name = "Epic Mudcrab", template = creatureTemplate, soulValue = 500, isEssential = true}
+-- local recordDraft = types.Creature.createRecordDraft(creatureTable)
+-- local newRecord = world.createRecord(recordDraft)
+-- world.createObject(newRecord.id):teleport(playerCell, playerPosition)
 
 ---
 -- A read-only list of all @{#CreatureRecord}s in the world database, may be indexed by recordId.
@@ -901,7 +918,7 @@
 ---
 -- A read-only list of all @{#NpcRecord}s in the world database, may be indexed by recordId.
 -- Implements [iterables#List](iterables.html#List) of #NpcRecord.
--- @field [parent=#NPC] #map<#NpcRecord> records
+-- @field [parent=#NPC] #list<#NpcRecord> records
 -- @usage local npc = types.NPC.records['npc id']  -- get by id
 -- @usage local npc = types.NPC.records[1]  -- get by index
 
@@ -1163,8 +1180,8 @@
 -- @field #string class ID of the NPC's class (e.g. acrobat)
 -- @field #string model Path to the model associated with this NPC, used for animations.
 -- @field #string mwscript MWScript on this NPC (can be nil)
--- @field #string hair Path to the hair body part model
--- @field #string head Path to the head body part model
+-- @field #string hair ID of the hair body part
+-- @field #string head ID of the head body part
 -- @field #number baseGold The base barter gold of the NPC
 -- @field #number baseDisposition NPC's starting disposition
 -- @field #boolean isMale The gender setting of the NPC
@@ -1486,7 +1503,7 @@
 -- Creates an @{#ArmorRecord} without adding it to the world database, for the armor to appear correctly on the body, make sure to use a template as described below.
 -- Use @{openmw_world#(world).createRecord} to add the record to the world.
 -- @function [parent=#Armor] createRecordDraft
--- @param #ArmorRecord armor A Lua table with the fields of a ArmorRecord, with an additional field `template` that accepts a @{#ArmorRecord} as a base.
+-- @param #ArmorRecord armor A Lua table with the fields of an ArmorRecord, with an additional field `template` that accepts an @{#ArmorRecord} as a base.
 -- @return #ArmorRecord A strongly typed Armor record.
 -- @usage local armorTemplate = types.Armor.record('orcish_cuirass')
 -- local armorTable = {name = "Better Orcish Cuirass",template = armorTemplate,baseArmor = armorTemplate.baseArmor + 10}
@@ -2089,6 +2106,13 @@
 -- @field #Item baseType @{#Item}
 
 ---
+-- Creates a @{#ProbeRecord} without adding it to the world database.
+-- Use @{openmw_world#(world).createRecord} to add the record to the world.
+-- @function [parent=#Probe] createRecordDraft
+-- @param #ProbeRecord probe A Lua table with the fields of a ProbeRecord, with an optional field `template` that accepts a @{#ProbeRecord} as a base.
+-- @return #ProbeRecord A strongly typed Probe record.
+
+---
 -- A read-only list of all @{#ProbeRecord}s in the world database.
 -- Implements [iterables#List](iterables.html#List) of #ProbeRecord.
 -- @field [parent=#Probe] #list<#ProbeRecord> records
@@ -2194,7 +2218,7 @@
 -- Creates an @{#ActivatorRecord} without adding it to the world database.
 -- Use @{openmw_world#(world).createRecord} to add the record to the world.
 -- @function [parent=#Activator] createRecordDraft
--- @param #ActivatorRecord activator A Lua table with the fields of a ActivatorRecord, with an optional field `template` that accepts a @{#ActivatorRecord} as a base.
+-- @param #ActivatorRecord activator A Lua table with the fields of an ActivatorRecord, with an optional field `template` that accepts an @{#ActivatorRecord} as a base.
 -- @return #ActivatorRecord A strongly typed Activator record.
 
 
@@ -2219,6 +2243,18 @@
 -- @function [parent=#Container] content
 -- @param openmw.core#GameObject object
 -- @return openmw.core#Inventory
+
+---
+-- Creates a @{#ContainerRecord} without adding it to the world database.
+-- Use @{openmw_world#(world).createRecord} to add the record to the world.
+-- @function [parent=#Container] createRecordDraft
+-- @param #ContainerRecord container A Lua table with the fields of a ContainerRecord, with an additional field `template` that accepts a @{#ContainerRecord} as a base.
+-- @return #ContainerRecord A strongly typed Container record.
+-- @usage local chestTemplate = types.Container.records['chest_small_01']
+-- local containerTable = {name = "Respawning Treasure Chest", template = chestTemplate, isRespawning = true, weight = 150.0}
+-- local recordDraft = types.Container.createRecordDraft(containerTable)
+-- local newRecord = world.createRecord(recordDraft)
+-- world.createObject(newRecord.id):teleport(playerCell, playerPosition)
 
 ---
 -- Container content (same as `Container.content`, added for consistency with `Actor.inventory`).
@@ -2278,6 +2314,13 @@
 --- @{#DoorSTATE}
 -- @field [parent=#Door] #DoorSTATE STATE
 -- @usage local state = types.Door.STATE["Idle"]
+
+---
+-- Creates a @{#DoorRecord} without adding it to the world database.
+-- Use @{openmw_world#(world).createRecord} to add the record to the world.
+-- @function [parent=#Door] createRecordDraft
+-- @param #DoorRecord door A Lua table with the fields of a DoorRecord, with an optional field `template` that accepts a @{#DoorRecord} as a base.
+-- @return #DoorRecord A strongly typed Door record.
 
 ---
 -- A read-only list of all @{#DoorRecord}s in the world database.
@@ -2366,6 +2409,13 @@
 
 ---
 -- @type Static
+
+---
+-- Creates a @{#StaticRecord} without adding it to the world database.
+-- Use @{openmw_world#(world).createRecord} to add the record to the world.
+-- @function [parent=#Static] createRecordDraft
+-- @param #StaticRecord static A Lua table with the fields of a StaticRecord, with an optional field `template` that accepts a @{#StaticRecord} as a base.
+-- @return #StaticRecord A strongly typed Static record.
 
 ---
 -- A read-only list of all @{#StaticRecord}s in the world database.

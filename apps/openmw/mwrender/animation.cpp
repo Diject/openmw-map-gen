@@ -67,21 +67,6 @@
 
 namespace
 {
-    class MarkDrawablesVisitor : public osg::NodeVisitor
-    {
-    public:
-        MarkDrawablesVisitor(osg::Node::NodeMask mask)
-            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
-            , mMask(mask)
-        {
-        }
-
-        void apply(osg::Drawable& drawable) override { drawable.setNodeMask(mMask); }
-
-    private:
-        osg::Node::NodeMask mMask = 0;
-    };
-
     /// Removes all particle systems and related nodes in a subgraph.
     class RemoveParticlesVisitor : public osg::NodeVisitor
     {
@@ -921,7 +906,10 @@ namespace MWRender
         while (stateiter != mStates.end())
         {
             if (stateiter->second.mPriority == priority && stateiter->first != groupname)
-                mStates.erase(stateiter++);
+            {
+                animationEnded(stateiter->second);
+                stateiter = mStates.erase(stateiter);
+            }
             else
                 ++stateiter;
         }
@@ -949,6 +937,7 @@ namespace MWRender
                 state.mAutoDisable = autodisable;
                 state.mGroupname = groupname;
                 state.mStartKey = start;
+                state.mStopKey = stop;
                 mStates[std::string{ groupname }] = state;
 
                 if (state.mPlaying)
@@ -1241,11 +1230,7 @@ namespace MWRender
 
         if (complete)
         {
-            if (iter->second.mStopTime > iter->second.mStartTime)
-                *complete = (iter->second.getTime() - iter->second.mStartTime)
-                    / (iter->second.mStopTime - iter->second.mStartTime);
-            else
-                *complete = (iter->second.mPlaying ? 0.0f : 1.0f);
+            *complete = iter->second.getCompletion();
         }
         if (speedmult)
             *speedmult = iter->second.mSpeedMult;
@@ -1277,7 +1262,10 @@ namespace MWRender
     {
         AnimStateMap::iterator iter = mStates.find(groupname);
         if (iter != mStates.end())
+        {
+            animationEnded(iter->second);
             mStates.erase(iter);
+        }
         resetActiveGroups();
     }
 
@@ -1416,7 +1404,8 @@ namespace MWRender
 
             if (!state.mPlaying && state.mAutoDisable)
             {
-                mStates.erase(stateiter++);
+                animationEnded(stateiter->second);
+                stateiter = mStates.erase(stateiter);
 
                 resetActiveGroups();
             }
@@ -1780,9 +1769,6 @@ namespace MWRender
 
         node->setNodeMask(Mask_Effect);
 
-        MarkDrawablesVisitor markVisitor(Mask_Effect);
-        node->accept(markVisitor);
-
         params.mMaxControllerLength = findMaxLengthVisitor.getMaxLength();
         params.mLoop = loop;
         params.mEffectId = effectId;
@@ -2012,6 +1998,12 @@ namespace MWRender
             mInsert->removeChild(mObjectRoot);
     }
 
+    void Animation::animationEnded(AnimState& state) const
+    {
+        MWBase::Environment::get().getLuaManager()->animationEnded(
+            mPtr, state.mGroupname, state.getTime(), state.getCompletion(), state.mStartKey, state.mStopKey);
+    }
+
     MWWorld::MovementDirectionFlags Animation::getSupportedMovementDirections(
         std::span<const std::string_view> prefixes) const
     {
@@ -2154,5 +2146,13 @@ namespace MWRender
                                     << ") parents";
             mNode->getParent(0)->removeChild(mNode);
         }
+    }
+
+    float Animation::AnimState::getCompletion() const
+    {
+        if (mStopTime > mStartTime)
+            return (getTime() - mStartTime) / (mStopTime - mStartTime);
+        else
+            return mPlaying ? 0.0f : 1.0f;
     }
 }
