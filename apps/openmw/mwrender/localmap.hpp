@@ -62,6 +62,12 @@ namespace MWRender
         osg::ref_ptr<osg::Texture2D> getMapTexture(int x, int y);
 
         osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
+        
+        /**
+         * Get the rendered map image for a cell (for extraction purposes)
+         * Returns the osg::Image that contains the rendered pixel data
+         */
+        osg::ref_ptr<osg::Image> getMapImage(int x, int y);
 
         /**
          * Removes cameras that have already been rendered. Should be called every frame to ensure that
@@ -97,9 +103,53 @@ namespace MWRender
          */
         bool isPositionExplored(float nX, float nY, int x, int y);
 
+        /**
+         * Clear the render cache for a specific exterior cell, forcing it to be re-rendered on next request
+         */
+        void clearCellCache(int x, int y);
+
         osg::Group* getRoot();
 
         MyGUI::IntRect getInteriorGrid() const;
+        
+        /**
+         * Enable/disable extraction mode. When enabled, cameras won't be automatically cleaned up
+         * after rendering, allowing batch extraction of multiple maps.
+         */
+        void setExtractionMode(bool enabled);
+        bool isExtractionMode() const { return mExtractionMode; }
+
+        /**
+         * Get interior map bounds (with padding applied) - for map extraction
+         */
+        const osg::BoundingBox& getInteriorBounds() const { return mBounds; }
+        
+        /**
+         * Get interior map center after rotation - for map extraction
+         */
+        const osg::Vec2f& getInteriorCenter() const { return mCenter; }
+        
+        /**
+         * Get interior map rotation angle - for map extraction
+         */
+        float getInteriorAngle() const { return mAngle; }
+
+        /**
+         * Request a fitted interior map render. Computes segment count at default scale,
+         * then adjusts the effective map world size so the interior fills the texture.
+         */
+        void requestInteriorMapFitted(const MWWorld::CellStore* cell);
+
+        /**
+         * Get the effective map world size used during the last interior render.
+         * For default renders this equals mMapWorldSize; for fitted renders it may be smaller.
+         */
+        float getEffectiveMapWorldSize() const { return mEffectiveMapWorldSize; }
+
+        /**
+         * Get the default map world size (Constants::CellSizeInUnits).
+         */
+        int getMapWorldSize() const { return mMapWorldSize; }
 
     private:
         osg::ref_ptr<osg::Group> mRoot;
@@ -132,6 +182,7 @@ namespace MWRender
             osg::ref_ptr<osg::Texture2D> mMapTexture;
             osg::ref_ptr<osg::Texture2D> mFogOfWarTexture;
             osg::ref_ptr<osg::Image> mFogOfWarImage;
+            osg::ref_ptr<LocalMapRenderToTexture> mRTT; // Reference to the RTT node for this segment
         };
 
         typedef std::map<std::pair<int, int>, MapSegment> SegmentMap;
@@ -157,9 +208,15 @@ namespace MWRender
         void setupRenderToTexture(
             int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
 
+        void setupRenderToTexture(
+            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax,
+            float customMapWorldSize);
+
+        float mEffectiveMapWorldSize;
         osg::BoundingBox mBounds;
         osg::Vec2f mCenter;
         bool mInterior;
+        bool mExtractionMode = false;
 
         std::uint8_t getExteriorNeighbourFlags(int cellX, int cellY) const;
     };

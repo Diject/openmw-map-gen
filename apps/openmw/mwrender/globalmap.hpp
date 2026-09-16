@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <osg/ref_ptr>
+#include <osg/Vec3f>
 
 namespace osg
 {
@@ -74,6 +75,12 @@ namespace MWRender
 
         void asyncWritePng();
 
+        osg::Vec3f getBackgroundColor() const;
+
+        void setBorderWidth(int borderWidth);
+        void setWaterAlphaMode(bool waterAlpha);
+        bool getWaterAlphaMode() const;
+
     private:
         struct WritePng;
 
@@ -121,6 +128,8 @@ namespace MWRender
         // CPU copy of overlay
         osg::ref_ptr<osg::Image> mOverlayImage;
 
+        osg::ref_ptr<osg::Image> mColorLut;
+
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
         osg::ref_ptr<CreateMapWorkItem> mWorkItem;
         osg::ref_ptr<WritePng> mWritePng;
@@ -129,6 +138,9 @@ namespace MWRender
         int mHeight;
 
         int mMinX, mMaxX, mMinY, mMaxY;
+        
+        int mBorderWidth;
+        bool mWaterAlpha;
     };
 
 }

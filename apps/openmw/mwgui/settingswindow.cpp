@@ -1068,10 +1068,11 @@ namespace MWGui
 
     void SettingsWindow::onClose()
     {
+        // Remove saving of settings
         // Save user settings
-        Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
-        MWBase::Environment::get().getLuaManager()->savePermanentStorage(mCfgMgr.getUserConfigPath());
-        MWBase::Environment::get().getInputManager()->saveBindings();
+        //Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
+        //MWBase::Environment::get().getLuaManager()->savePermanentStorage(mCfgMgr.getUserConfigPath());
+        //MWBase::Environment::get().getInputManager()->saveBindings();
     }
 
     void SettingsWindow::onWindowResize(MyGUI::Window* /*sender*/)

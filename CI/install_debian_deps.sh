@@ -56,6 +56,7 @@ declare -rA GROUPED_DEPS=(
   [openmw-deps-static]="
     libcollada-dom-dev libfreetype6-dev libjpeg-dev libpng-dev
     libsdl2-dev libboost-system-dev libboost-filesystem-dev libgl-dev
+    libfreetype-dev
   "
 
   [openmw-coverage]="pipx"

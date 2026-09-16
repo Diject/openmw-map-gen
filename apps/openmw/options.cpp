@@ -95,6 +95,42 @@ namespace OpenMW
         addOption("random-seed", bpo::value<unsigned int>()->default_value(Misc::Rng::generateDefaultSeed()),
             "seed value for random number generator");
 
+        addOption("world-map-output", bpo::value<std::string>()->default_value(""),
+            "directory to save world map texture (default: textures/advanced_world_map/custom)");
+
+        addOption("local-map-output", bpo::value<std::string>()->default_value(""),
+            "directory to save local map textures (default: textures/advanced_world_map/local)");
+
+        addOption("overwrite-maps", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "overwrite existing map files during extraction");
+
+        addOption("keep-temp-data", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "keep temporary .heights files after tilemap generation");
+
+        addOption("clear-output-dirs", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "clear output directories (png and yaml files) before starting");
+
+        addOption("use-constant-scale", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "use constant scale for interior maps instead of increasing scale to fit unused texture space");
+
+        addOption("tilemap-downscale-factor", bpo::value<int>()->default_value(8),
+            "downscale factor for tilemap generation (must be power of 2, default: 8, -1 - disabled)");
+
+        addOption("world-map-pixelsPerCell", bpo::value<int>()->default_value(32),
+            "pixel size for one cell on the world map texture. [1-64]. Default: 32");
+
+        addOption("world-map-border", bpo::value<int>()->default_value(2),
+            "border size around territories above 0 on the world map texture. 0 - disabled. Default: 2");
+
+        addOption("world-map-disable-water-alpha", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "remove alpha channel for water on the world map (disables water transparency)");
+
+        addOption("local-map-size", bpo::value<int>()->default_value(256),
+            "size of local map images in pixels. Default: 256");
+
+        addOption("use-original-settings", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "use original settings for resolution, window mode, etc.");
+
         return desc;
     }
 }

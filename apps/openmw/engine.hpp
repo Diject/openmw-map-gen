@@ -183,6 +183,15 @@ namespace OMW
         Translation::Storage mTranslationDataStorage;
         bool mNewGame;
 
+        std::string mWorldMapOutput;
+        std::string mLocalMapOutput;
+        bool mOverwriteMaps;
+        bool mKeepTempData;
+        int mTilemapDownscaleFactor;
+        int mLocalMapSize;
+        std::map<std::string, std::filesystem::path> mContentFileDirs;
+        std::map<std::string, std::string> mLaunchParameters;
+
         Files::ConfigurationManager& mCfgMgr;
         int mGlMaxTextureImageUnits;
 
@@ -264,7 +273,24 @@ namespace OMW
 
         void setRandomSeed(unsigned int seed);
 
+        void setWorldMapOutput(const std::string& path);
+
+        void setLocalMapOutput(const std::string& path);
+
+        void setOverwriteMaps(bool overwrite);
+
+        void setKeepTempData(bool keep);
+
+        void setTilemapDownscaleFactor(int factor);
+
+        void setLocalMapSize(int size);
+
         void setRecastMaxLogLevel(Debug::Level value) { mMaxRecastLogLevel = value; }
+
+        void setContentFileDirs(const std::map<std::string, std::filesystem::path>& dirs);
+
+        void setLaunchParameters(const std::map<std::string, std::string>& params);
+        const std::map<std::string, std::string>& getLaunchParameters() const { return mLaunchParameters; }
     };
 }
 

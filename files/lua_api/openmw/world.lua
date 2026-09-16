@@ -228,4 +228,194 @@
 -- @function [parent=#world] advanceTime
 -- @param #number hours Number of hours to advance time
 
+---
+-- Extract world map using path from --world-map-output option or default path.
+-- This function generates a world map image and saves it as a PNG file.
+-- The output directory is determined by --world-map-output command line option,
+-- or defaults to "./textures/advanced_world_map/custom" if not specified.
+-- @function [parent=#world] extractWorldMap
+-- @param #number cellSize (optional, 32 by default) Size of each cell in pixels. 
+--   Controls the resolution of the generated world map. Higher values produce larger, more detailed maps.
+-- @param #number borderWidth (optional, 0 by default) Width of borders around land areas (height >= 0) in pixels.
+--   If nil or <= 0, no borders are drawn. Increasing this value makes borders thicker.
+-- @usage world.extractWorldMap()  -- Use default cell size (32 pixels), no borders
+-- @usage world.extractWorldMap(64)  -- Use 64 pixels per cell, no borders
+-- @usage world.extractWorldMap(32, 1)  -- Default resolution with 1-pixel border
+-- @usage world.extractWorldMap(64, 2)  -- High resolution with 2-pixel border
+-- @usage world.extractWorldMap(32, 0)  -- Explicitly disable borders
+-- @usage world.extractWorldMap(32, nil)  -- nil also disables borders
+
+---
+-- Extract local maps using path from --local-map-output option or default path.
+-- This function generates map images for all active cells and saves them as PNG files.
+-- The output directory is determined by --local-map-output command line option,
+-- or defaults to "./textures/advanced_world_map/local" if not specified.
+-- By default, existing maps are not overwritten. Use --overwrite-maps option to force overwriting.
+-- @function [parent=#world] extractLocalMaps
+-- @param #boolean playerCellOnly (optional, false by default) If true, extracts only the player's current cell.
+--   For exterior cells, this extracts only the player's cell instead of all 9 loaded cells.
+--   For interior cells, this has no effect as only one cell is loaded anyway.
+-- @usage world.extractLocalMaps()  -- Extract all active cells (default)
+-- @usage world.extractLocalMaps(false)  -- Same as above, extract all active cells
+-- @usage world.extractLocalMaps(true)  -- Extract only player's current cell (exterior only)
+
+---
+-- Enable extraction mode for map generation.
+-- This mode disables collision, AI, scripts, and enables god mode to facilitate map extraction.
+-- Should be called before extractWorldMap or extractLocalMaps to prepare the game state.
+-- @function [parent=#world] enableExtractionMode
+-- @usage world.enableExtractionMode()
+
+---
+-- Disable extraction mode and restore normal game behavior.
+-- Restores god mode, scripts, and AI to their normal state.
+-- Should be called after map extraction is complete.
+-- @function [parent=#world] disableExtractionMode
+-- @usage world.disableExtractionMode()
+
+---
+-- Check if map extraction is currently in progress.
+-- Returns true if world map or local map extraction is active, false otherwise.
+-- Use this to avoid starting multiple extractions simultaneously.
+-- @function [parent=#world] isMapExtractionActive
+-- @return #boolean true if map extraction is active, false otherwise
+-- @usage
+-- if not world.isMapExtractionActive() then
+--   world.extractWorldMap("path/to/output")
+-- else
+--   print("Map extraction already in progress")
+-- end
+
+---
+-- Get the overwrite maps flag from command line options.
+-- Returns true if the --overwrite-maps option was specified, false otherwise.
+-- This flag determines whether existing map files should be overwritten during extraction.
+-- @function [parent=#world] getOverwriteFlag
+-- @return #boolean true if overwrite is enabled, false otherwise
+-- @usage
+-- if world.getOverwriteFlag() then
+--   print("Will overwrite existing maps")
+-- else
+--   print("Will skip existing maps")
+-- end
+
+---
+-- Get list of existing local map IDs (filenames without extension).
+-- Returns a table containing unique names of all files in the local map output directory
+-- with .yaml, .png, or .tga extensions, without the extension itself.
+-- Each filename corresponds to a cell ID that has been extracted.
+-- This can be used to check which maps have already been generated.
+-- The list contains unique names - if a cell has multiple file types (e.g., both .yaml and .png),
+-- the name will appear only once in the list.
+-- @function [parent=#world] getExistingLocalMapIds
+-- @return #table Array of strings containing unique local map IDs (cell names without extension)
+-- @usage
+-- local existingMaps = world.getExistingLocalMapIds()
+-- for _, mapId in ipairs(existingMaps) do
+--   print("Found existing map: " .. mapId)
+-- end
+-- 
+-- -- Check if a specific map exists
+-- local targetCell = "Balmora"
+-- local exists = false
+-- for _, mapId in ipairs(existingMaps) do
+--   if mapId == targetCell then
+--     exists = true
+--     break
+--   end
+-- end
+-- if not exists then
+--   print("Map for " .. targetCell .. " not found, need to extract")
+-- end
+
+---
+-- Save text data to a file in the local map output directory.
+-- The file is created in the directory specified by --local-map-output option
+-- or the default local map directory. The directory will be created if it doesn't exist.
+-- @function [parent=#world] saveToLocalMapDir
+-- @param #string filename Name of the file with extension (e.g., "data.txt", "config.yaml")
+-- @param #string stringData Text content to write to the file
+-- @usage
+-- -- Save a simple text file
+-- world.saveToLocalMapDir("celldata.txt", "Cell information here")
+-- 
+-- -- Save YAML configuration
+-- local yamlData = "setting1: value1\nsetting2: value2\n"
+-- world.saveToLocalMapDir("settings.yaml", yamlData)
+-- 
+-- -- Save JSON data
+-- local jsonData = '{"name": "Balmora", "type": "city"}'
+-- world.saveToLocalMapDir("Balmora.json", jsonData)
+
+---
+-- Generate a tiled world map from local map tiles.
+-- This function scans the local map directory for PNG files with the format "(gridX,gridY).png",
+-- downscales each tile from 256x256 to 32x32 pixels, and composites them into a single world map image.
+-- Areas without local maps are filled with the specified background color (default: #2c2d28).
+-- The result is saved as "tilemap.png" and "tilemapInfo.yaml" in the world map output directory.
+-- While this function is executing, @{#world.isMapExtractionActive} will return true.
+-- @function [parent=#world] generateTileWorldMap
+-- @param openmw.util#Color backgroundColor (optional) Background color for areas without local maps.
+--   If nil, uses default color #2c2d28. Use util.color.rgb() or util.color.hex() to create colors.
+-- @usage
+-- -- Generate tilemap with default background color
+-- world.generateTileWorldMap()
+-- 
+-- -- Generate tilemap with custom background color (dark blue)
+-- local util = require('openmw.util')
+-- world.generateTileWorldMap(util.color.rgb(0.1, 0.1, 0.3))
+-- 
+-- -- Generate tilemap with custom hex color
+-- local util = require('openmw.util')
+-- world.generateTileWorldMap(util.color.hex('1a1a4d'))
+-- 
+-- -- This will create:
+-- -- - tilemap.png: The composite world map image
+-- -- - tilemapInfo.yaml: Metadata including dimensions, grid bounds, and pixels per cell
+
+---
+-- Get launch parameters passed from command line and configuration files.
+-- Returns a table containing all custom launch parameters that were passed to OpenMW.
+-- These parameters can be used to pass custom configuration data to Lua scripts.
+-- The parameters are collected from command line arguments and configuration files during engine initialization.
+-- @function [parent=#world] getLaunchParameters
+-- @return #table Table with parameter names as keys and their values as strings
+-- @usage
+-- -- Get all launch parameters
+-- local params = world.getLaunchParameters()
+-- for key, value in pairs(params) do
+--   print("Parameter: " .. key .. " = " .. value)
+-- end
+-- 
+-- -- Check for a specific parameter
+-- local params = world.getLaunchParameters()
+-- if params["custom_mode"] then
+--   print("Custom mode is: " .. params["custom_mode"])
+-- end
+-- 
+-- -- Use parameters to control script behavior
+-- local params = world.getLaunchParameters()
+-- if params["debug_mode"] == "true" then
+--   -- Enable debug logging
+--   print("Debug mode enabled")
+-- end
+
+---
+-- Set a launch parameter at runtime.
+-- This function allows Lua scripts to modify or add launch parameters during execution.
+-- These parameters are stored in the same location as command-line parameters and can be
+-- retrieved later using @{#world.getLaunchParameters}.
+-- @function [parent=#world] setLaunchParameter
+-- @param #string parameterName Name of the parameter to set
+-- @param #any value Value to assign to the parameter (must be a string, boolean, or number)
+
+---
+-- Clear output directories where map files are generated.
+-- Deletes all files with '.png' and '.yaml' extensions in the world map output directory
+-- and local map output directory.
+-- @function [parent=#world] clearMapOutputDirs
+-- @usage
+-- world.clearMapOutputDirs()
+
 return nil
+

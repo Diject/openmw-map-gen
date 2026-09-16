@@ -245,8 +245,9 @@ namespace MWGui
 
     void PostProcessorHud::onClose()
     {
-        Settings::ShaderManager::get().save();
-        Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
+        // Remove saving of settings
+        //Settings::ShaderManager::get().save();
+        //Settings::Manager::saveUser(mCfgMgr.getUserConfigPath() / "settings.cfg");
         toggleMode(Settings::ShaderManager::Mode::Normal);
     }
 

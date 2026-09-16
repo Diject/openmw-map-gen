@@ -40,7 +40,7 @@ namespace
         return val * val;
     }
 
-    std::pair<int, int> divideIntoSegments(const osg::BoundingBox& bounds, int mapSize)
+    std::pair<int, int> divideIntoSegments(const osg::BoundingBox& bounds, float mapSize)
     {
         osg::Vec2f min(bounds.xMin(), bounds.yMin());
         osg::Vec2f max(bounds.xMax(), bounds.yMax());
@@ -56,7 +56,7 @@ namespace MWRender
     class LocalMapRenderToTexture : public SceneUtil::RTTNode
     {
     public:
-        LocalMapRenderToTexture(osg::Node* sceneRoot, int res, int mapWorldSize, float x, float y,
+        LocalMapRenderToTexture(osg::Node* sceneRoot, int res, float mapWorldSize, float x, float y,
             const osg::Vec3d& upVector, float zmin, float zmax);
 
         void setDefaults(osg::Camera* camera) override;
@@ -77,11 +77,12 @@ namespace MWRender
     LocalMap::LocalMap(osg::Group* root)
         : mRoot(root)
         , mMapResolution(static_cast<int>(
-              Settings::map().mLocalMapResolution * MWBase::Environment::get().getWindowManager()->getScalingFactor()))
+              Settings::map().mLocalMapResolution))
         , mMapWorldSize(Constants::CellSizeInUnits)
         , mCellDistance(Constants::CellGridRadius)
         , mAngle(0.f)
         , mInterior(false)
+        , mEffectiveMapWorldSize(static_cast<float>(Constants::CellSizeInUnits))
     {
         SceneUtil::FindByNameVisitor find("Scene Root");
         mRoot->accept(find);
@@ -131,7 +132,7 @@ namespace MWRender
         }
         else
         {
-            auto segments = divideIntoSegments(mBounds, mMapWorldSize);
+            auto segments = divideIntoSegments(mBounds, mEffectiveMapWorldSize);
 
             auto fog = std::make_unique<ESM::FogState>();
 
@@ -169,14 +170,22 @@ namespace MWRender
     void LocalMap::setupRenderToTexture(
         int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax)
     {
-        mLocalMapRTTs.emplace_back(
-            new LocalMapRenderToTexture(mSceneRoot, mMapResolution, mMapWorldSize, left, top, upVector, zmin, zmax));
+        setupRenderToTexture(segmentX, segmentY, left, top, upVector, zmin, zmax, static_cast<float>(mMapWorldSize));
+    }
+
+    void LocalMap::setupRenderToTexture(
+        int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax,
+        float customMapWorldSize)
+    {
+        auto rttNode = new LocalMapRenderToTexture(mSceneRoot, mMapResolution, customMapWorldSize, left, top, upVector, zmin, zmax);
+        mLocalMapRTTs.emplace_back(rttNode);
 
         mRoot->addChild(mLocalMapRTTs.back());
 
         MapSegment& segment = mInterior ? mInteriorSegments[std::make_pair(segmentX, segmentY)]
                                         : mExteriorSegments[std::make_pair(segmentX, segmentY)];
         segment.mMapTexture = static_cast<osg::Texture2D*>(mLocalMapRTTs.back()->getColorTexture(nullptr));
+        segment.mRTT = rttNode; // Store reference to RTT node
     }
 
     void LocalMap::requestMap(const MWWorld::CellStore* cell)
@@ -237,6 +246,36 @@ namespace MWRender
             return osg::ref_ptr<osg::Texture2D>();
         else
             return found->second.mFogOfWarTexture;
+    }
+
+    osg::ref_ptr<osg::Image> LocalMap::getMapImage(int x, int y)
+    {
+        auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
+        SegmentMap::iterator found = segments.find(std::make_pair(x, y));
+        if (found == segments.end())
+            return osg::ref_ptr<osg::Image>();
+        
+        MapSegment& segment = found->second;
+        
+        if (!segment.mRTT)
+            return osg::ref_ptr<osg::Image>();
+        
+        osg::Camera* camera = segment.mRTT->getCamera(nullptr);
+        if (!camera)
+            return osg::ref_ptr<osg::Image>();
+        
+        const osg::Camera::BufferAttachmentMap& attachments = camera->getBufferAttachmentMap();
+        auto it = attachments.find(osg::Camera::COLOR_BUFFER);
+        if (it != attachments.end())
+        {
+            osg::Image* img = it->second._image.get();
+            if (img && img->s() > 0 && img->t() > 0 && img->data() != nullptr)
+            {
+                return img;
+            }
+        }
+        
+        return osg::ref_ptr<osg::Image>();
     }
 
     void LocalMap::cleanupCameras()
@@ -305,6 +344,7 @@ namespace MWRender
 
         mInterior = true;
         mExteriorSegments.clear();
+        mEffectiveMapWorldSize = static_cast<float>(mMapWorldSize);
 
         mBounds = bounds;
 
@@ -429,6 +469,102 @@ namespace MWRender
         }
     }
 
+    void LocalMap::requestInteriorMapFitted(const MWWorld::CellStore* cell)
+    {
+        osg::ComputeBoundsVisitor computeBoundsVisitor;
+        computeBoundsVisitor.setTraversalMask(Mask_Scene | Mask_Terrain | Mask_Object | Mask_Static);
+        mSceneRoot->accept(computeBoundsVisitor);
+
+        osg::BoundingBox bounds = computeBoundsVisitor.getBoundingBox();
+
+        if (!bounds.valid() || bounds.radius2() == 0.0)
+            return;
+
+        mInterior = true;
+        mExteriorSegments.clear();
+
+        mBounds = bounds;
+
+        osg::Vec2f north = getNorthVector(cell);
+        mAngle = std::atan2(north.x(), north.y());
+
+        osg::Vec2f origCenter(bounds.center().x(), bounds.center().y());
+        osg::Vec3f origCorners[8];
+        for (int i = 0; i < 8; ++i)
+            origCorners[i] = mBounds.corner(i);
+
+        for (int i = 0; i < 8; ++i)
+        {
+            osg::Vec3f corner = origCorners[i];
+            osg::Vec2f corner2d(corner.x(), corner.y());
+            corner2d = rotatePoint(corner2d, origCenter, mAngle);
+            mBounds.expandBy(osg::Vec3f(corner2d.x(), corner2d.y(), 0));
+        }
+
+        const float padding = 500.0f;
+        mBounds.set(mBounds._min - osg::Vec3f(padding, padding, 0.f), mBounds._max + osg::Vec3f(padding, padding, 0.f));
+
+        float zMin = mBounds.zMin();
+        float zMax = mBounds.zMax();
+        mCenter = osg::Vec2f(mBounds.center().x(), mBounds.center().y());
+
+        // Determine segment count at default scale
+        auto defaultSegments = divideIntoSegments(mBounds, mMapWorldSize);
+        int segsX = defaultSegments.first;
+        int segsY = defaultSegments.second;
+
+        if (segsX <= 0 || segsY <= 0)
+            return;
+
+        // Calculate the fitted map world size so the content fills all segments
+        float boundsWidth = mBounds.xMax() - mBounds.xMin();
+        float boundsHeight = mBounds.yMax() - mBounds.yMin();
+        float fittedMapWorldSize = std::max(boundsWidth / static_cast<float>(segsX),
+                                             boundsHeight / static_cast<float>(segsY));
+
+        // Ensure we don't exceed original segment count:
+        // expand bounds so that segsX * fittedMapWorldSize and segsY * fittedMapWorldSize are covered
+        float newTotalWidth = segsX * fittedMapWorldSize;
+        float newTotalHeight = segsY * fittedMapWorldSize;
+        float expandX = (newTotalWidth - boundsWidth) * 0.5f;
+        float expandY = (newTotalHeight - boundsHeight) * 0.5f;
+        mBounds.set(
+            osg::Vec3f(mBounds.xMin() - expandX, mBounds.yMin() - expandY, mBounds.zMin()),
+            osg::Vec3f(mBounds.xMax() + expandX, mBounds.yMax() + expandY, mBounds.zMax()));
+        mCenter = osg::Vec2f(mBounds.center().x(), mBounds.center().y());
+
+        mEffectiveMapWorldSize = fittedMapWorldSize;
+
+        Log(Debug::Info) << "Fitted interior map: " << segsX << "x" << segsY << " segments, "
+                         << "mapWorldSize: " << mMapWorldSize << " -> " << fittedMapWorldSize
+                         << " (scale: " << (static_cast<float>(mMapWorldSize) / fittedMapWorldSize) << ")";
+
+        osg::Vec2f min(mBounds.xMin(), mBounds.yMin());
+        osg::Quat cameraOrient(mAngle, osg::Vec3d(0, 0, -1));
+
+        for (int x = 0; x < segsX; ++x)
+        {
+            for (int y = 0; y < segsY; ++y)
+            {
+                osg::Vec2f start = min + osg::Vec2f(fittedMapWorldSize * x, fittedMapWorldSize * y);
+                osg::Vec2f newcenter = start + osg::Vec2f(fittedMapWorldSize / 2.f, fittedMapWorldSize / 2.f);
+
+                osg::Vec2f a = newcenter - mCenter;
+                osg::Vec3f rotatedCenter = cameraOrient * (osg::Vec3f(a.x(), a.y(), 0));
+
+                osg::Vec2f pos = osg::Vec2f(rotatedCenter.x(), rotatedCenter.y()) + mCenter;
+
+                setupRenderToTexture(x, y, pos.x(), pos.y(), osg::Vec3f(north.x(), north.y(), 0.f), zMin, zMax,
+                    fittedMapWorldSize);
+
+                auto coords = std::make_pair(x, y);
+                MapSegment& segment = mInteriorSegments[coords];
+                if (!segment.mFogOfWarImage)
+                    segment.initFogOfWar();
+            }
+        }
+    }
+
     void LocalMap::worldToInteriorMapPosition(osg::Vec2f pos, float& nX, float& nY, int& x, int& y) const
     {
         pos = rotatePoint(pos, mCenter, mAngle);
@@ -473,6 +609,21 @@ namespace MWRender
     osg::Group* LocalMap::getRoot()
     {
         return mRoot;
+    }
+
+    void LocalMap::setExtractionMode(bool enabled)
+    {
+        mExtractionMode = enabled;
+    }
+
+    void LocalMap::clearCellCache(int x, int y)
+    {
+        auto it = mExteriorSegments.find(std::make_pair(x, y));
+        if (it != mExteriorSegments.end())
+        {
+            // Reset the render flags to force re-rendering
+            it->second.mLastRenderNeighbourFlags = 0;
+        }
     }
 
     void LocalMap::updatePlayer(const osg::Vec3f& position, const osg::Quat& orientation, float& u, float& v, int& x,
@@ -588,7 +739,7 @@ namespace MWRender
 
     MyGUI::IntRect LocalMap::getInteriorGrid() const
     {
-        auto segments = divideIntoSegments(mBounds, mMapWorldSize);
+        auto segments = divideIntoSegments(mBounds, mEffectiveMapWorldSize);
         return { -1, -1, segments.first, segments.second };
     }
 
@@ -683,7 +834,7 @@ namespace MWRender
         fog.mImageData = std::vector<char>(data.begin(), data.end());
     }
 
-    LocalMapRenderToTexture::LocalMapRenderToTexture(osg::Node* sceneRoot, int res, int mapWorldSize, float x, float y,
+    LocalMapRenderToTexture::LocalMapRenderToTexture(osg::Node* sceneRoot, int res, float mapWorldSize, float x, float y,
         const osg::Vec3d& upVector, float zmin, float zmax)
         : RTTNode(res, res, 0, false, 0, StereoAwareness::Unaware_MultiViewShaders, shouldAddMSAAIntermediateTarget())
         , mSceneRoot(sceneRoot)
@@ -693,10 +844,10 @@ namespace MWRender
 
         if (SceneUtil::AutoDepth::isReversed())
             mProjectionMatrix = SceneUtil::getReversedZProjectionMatrixAsOrtho(
-                -mapWorldSize / 2, mapWorldSize / 2, -mapWorldSize / 2, mapWorldSize / 2, 5, (zmax - zmin) + 10);
+                -mapWorldSize / 2.f, mapWorldSize / 2.f, -mapWorldSize / 2.f, mapWorldSize / 2.f, 5, (zmax - zmin) + 10);
         else
             mProjectionMatrix.makeOrtho(
-                -mapWorldSize / 2, mapWorldSize / 2, -mapWorldSize / 2, mapWorldSize / 2, 5, (zmax - zmin) + 10);
+                -mapWorldSize / 2.f, mapWorldSize / 2.f, -mapWorldSize / 2.f, mapWorldSize / 2.f, 5, (zmax - zmin) + 10);
 
         mViewMatrix.makeLookAt(osg::Vec3d(x, y, zmax + 5), osg::Vec3d(x, y, zmin), upVector);
 
@@ -719,9 +870,10 @@ namespace MWRender
         camera->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         camera->setRenderOrder(osg::Camera::PRE_RENDER);
 
-        camera->setCullMask(Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
-        camera->setCullMaskLeft(Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
-        camera->setCullMaskRight(Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
+        // Add Mask_Water to fix missing water in some exterior local maps
+        camera->setCullMask(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
+        camera->setCullMaskLeft(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
+        camera->setCullMaskRight(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
         camera->setNodeMask(Mask_RenderToTexture);
         camera->setProjectionMatrix(mProjectionMatrix);
         camera->setViewMatrix(mViewMatrix);
@@ -774,6 +926,21 @@ namespace MWRender
 
         camera->addChild(lightSource);
         camera->addChild(mSceneRoot);
+        
+        // CRITICAL: Attach an Image to COLOR_BUFFER to enable pixel readback from FBO
+        // This is required for map extraction functionality
+        // The image MUST be pre-allocated before attaching to the camera
+        osg::ref_ptr<osg::Image> image = new osg::Image;
+        
+        // Get the texture size from the camera's viewport
+        const osg::Viewport* vp = camera->getViewport();
+        int width = vp ? vp->width() : 512;
+        int height = vp ? vp->height() : 512;
+        
+        // Allocate the image with the same format as the color buffer
+        image->allocateImage(width, height, 1, GL_RGB, GL_UNSIGNED_BYTE);
+        
+        camera->attach(osg::Camera::COLOR_BUFFER, image);
     }
 
     void CameraLocalUpdateCallback::operator()(LocalMapRenderToTexture* node, osg::NodeVisitor* nv)

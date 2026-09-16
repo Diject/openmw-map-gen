@@ -1,11 +1,15 @@
 #include "worldimp.hpp"
 
 #include <charconv>
+#include <fstream>
 #include <vector>
 
 #include <osg/ComputeBoundsVisitor>
 #include <osg/Group>
+#include <osg/Image>
 #include <osg/Timer>
+#include <osgDB/ReadFile>
+#include <osgDB/WriteFile>
 
 #include <MyGUI_TextIterator.h>
 
@@ -19,6 +23,7 @@
 #include <components/esm3/loadclas.hpp>
 #include <components/esm3/loadcrea.hpp>
 #include <components/esm3/loadench.hpp>
+#include <components/esm3/loadland.hpp>
 #include <components/esm3/loadgmst.hpp>
 #include <components/esm3/loadlevlist.hpp>
 #include <components/esm3/loadmgef.hpp>
@@ -92,6 +97,8 @@
 #include "../mwphysics/physicssystem.hpp"
 
 #include "../mwsound/constants.hpp"
+
+#include "../mapextractor.hpp"
 
 #include "actionteleport.hpp"
 #include "cellstore.hpp"
@@ -186,7 +193,7 @@ namespace MWWorld
     }
 
     World::World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-        const std::filesystem::path& userDataPath)
+        const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, bool keepTempData, int tilemapDownscaleFactor, int localMapSize, const std::map<std::string, std::filesystem::path>& contentFileDirs)
         : mResourceSystem(resourceSystem)
         , mLocalScripts(mStore)
         , mWorldModel(mStore, mReaders)
@@ -198,6 +205,12 @@ namespace MWWorld
         , mUserDataPath(userDataPath)
         , mActivationDistanceOverride(activationDistanceOverride)
         , mStartCell(startCell)
+        , mWorldMapOutputPath(worldMapOutputPath)
+        , mLocalMapOutputPath(localMapOutputPath)
+        , mTilemapDownscaleFactor(tilemapDownscaleFactor)
+        , mLocalMapSize(localMapSize)
+        , mKeepTempData(keepTempData)
+        , mContentFileDirs(contentFileDirs)
         , mSwimHeightScale(0.f)
         , mDistanceToFocusObject(-1.f)
         , mTeleportEnabled(true)
@@ -1554,6 +1567,16 @@ namespace MWWorld
     {
         if (mGoToJail && !paused)
             goToJail();
+
+        // Update map extraction if active
+        if (mMapExtractor)
+        {
+            mMapExtractor->update();
+            if (mMapExtractor->isExtractionComplete())
+            {
+                mMapExtractor.reset();
+            }
+        }
 
         // Reset "traveling" flag - there was a frame to detect traveling.
         mPlayerTraveling = false;
@@ -3781,5 +3804,527 @@ namespace MWWorld
     {
         if (MWPhysics::Actor* const actor = mPhysics->getActor(ptr))
             actor->setActive(value);
+    }
+
+    bool World::getOverwriteMaps() const
+    {
+        // Check launch parameters first (set at runtime via setLaunchParameter)
+        const auto& params = MWBase::Environment::get().getLaunchParameters();
+        auto it = params.find("overwrite-maps");
+        if (it != params.end())
+        {
+            // Parameter found in launch parameters
+            return it->second == "true";
+        }
+
+        return false;
+    }
+
+    void World::extractWorldMap(int cellSize, int borderWidth, bool waterAlphaMode)
+    {
+        if (!mMapExtractor)
+        {
+            mMapExtractor = std::make_unique<OMW::MapExtractor>(
+                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore);
+        }
+        mMapExtractor->extractWorldMap(cellSize, borderWidth, waterAlphaMode);
+    }
+
+    void World::extractLocalMaps(bool playerCellOnly)
+    {
+        if (!mMapExtractor)
+        {
+            mMapExtractor = std::make_unique<OMW::MapExtractor>(
+                mWorldMapOutputPath, mLocalMapOutputPath, mRendering.get(), &mStore, mLocalMapSize);
+        }
+        // Set LocalMap from WindowManager
+        if (auto* localMap = MWBase::Environment::get().getWindowManager()->getLocalMapRender())
+        {
+            mMapExtractor->setLocalMap(localMap);
+        }
+
+        // Check launch parameters use-constant-scale flag
+        {
+            const auto& params = MWBase::Environment::get().getLaunchParameters();
+            auto it = params.find("use-constant-scale");
+            bool fitLocalMaps = (it != params.end() && it->second == "false");
+            mMapExtractor->setFitLocalMaps(fitLocalMaps);
+        }
+        
+        const auto& activeCells = mWorldScene->getActiveCells();
+        std::vector<const MWWorld::CellStore*> cells;
+        
+        if (playerCellOnly)
+        {
+            MWWorld::Ptr player = getPlayerPtr();
+            if (!player.isEmpty() && player.isInCell())
+            {
+                MWWorld::CellStore* playerCell = player.getCell();
+                
+                // Only extract for exterior cells
+                // Interior cells are always single, so no filtering needed
+                if (playerCell && playerCell->isExterior())
+                {
+                    cells.push_back(playerCell);
+                }
+                else
+                {
+                    cells.assign(activeCells.begin(), activeCells.end());
+                }
+            }
+        }
+        else
+        {
+            // Extract all active cells
+            cells.assign(activeCells.begin(), activeCells.end());
+        }
+        
+        if (!cells.empty())
+        {
+            mMapExtractor->extractLocalMaps(cells);
+        }
+    }
+
+    bool World::isMapExtractionActive() const
+    {
+        return (mMapExtractor && !mMapExtractor->isExtractionComplete()) || mGeneratingTileWorldMap;
+    }
+
+    void World::saveToLocalMapDir(std::string_view filename, std::string_view stringData)
+    {
+        std::filesystem::path outputPath = mLocalMapOutputPath;
+        
+        // Create directory if it doesn't exist
+        if (!std::filesystem::exists(outputPath))
+        {
+            std::filesystem::create_directories(outputPath);
+        }
+        
+        std::filesystem::path filePath = outputPath / std::filesystem::path(filename);
+        
+        std::ofstream outFile(filePath, std::ios::out | std::ios::trunc);
+        if (!outFile)
+        {
+            throw std::runtime_error("Failed to open file for writing: " + filePath.string());
+        }
+        
+        outFile << stringData;
+        outFile.close();
+        
+        if (!outFile)
+        {
+            throw std::runtime_error("Failed to write to file: " + filePath.string());
+        }
+    }
+
+    std::string World::getContentFileDir(const std::string& contentFile) const
+    {
+        auto it = mContentFileDirs.find(contentFile);
+        if (it != mContentFileDirs.end())
+        {
+            return Files::pathToUnicodeString(it->second);
+        }
+        return "";
+    }
+
+    const std::map<std::string, std::string>& World::getLaunchParameters() const
+    {
+        return MWBase::Environment::get().getLaunchParameters();
+    }
+
+    void World::generateTileWorldMap(const osg::Vec3f& backgroundColor, bool waterAlphaMode)
+    {
+        if (mTilemapDownscaleFactor <= 0)
+            return;
+
+        mGeneratingTileWorldMap = true;
+        
+        std::filesystem::path localMapPath(mLocalMapOutputPath);
+        std::filesystem::path worldMapPath(mWorldMapOutputPath);
+
+        if (!std::filesystem::exists(localMapPath) || !std::filesystem::is_directory(localMapPath))
+        {
+            Log(Debug::Error) << "Local map directory does not exist: " << localMapPath;
+            mGeneratingTileWorldMap = false;
+            return;
+        }
+
+        std::filesystem::path tilemapDirPath = worldMapPath / "tilemap";
+
+        // Create world map output directory
+        std::filesystem::create_directories(tilemapDirPath);
+
+        // Step 1: Scan for all local map tiles and determine bounds
+        int minX = std::numeric_limits<int>::max();
+        int maxX = std::numeric_limits<int>::min();
+        int minY = std::numeric_limits<int>::max();
+        int maxY = std::numeric_limits<int>::min();
+
+        std::map<std::pair<int, int>, std::filesystem::path> tileFiles;
+
+        for (const auto& entry : std::filesystem::directory_iterator(localMapPath))
+        {
+            if (!entry.is_regular_file())
+                continue;
+
+            std::string filename = entry.path().filename().string();
+            if (filename.size() < 7 || filename.front() != '(' || filename.substr(filename.size() - 4) != ".png")
+                continue;
+
+            // Parse (x,y).png format
+            size_t commaPos = filename.find(',');
+            if (commaPos == std::string::npos)
+                continue;
+
+            try
+            {
+                int x = std::stoi(filename.substr(1, commaPos - 1));
+                int y = std::stoi(filename.substr(commaPos + 1, filename.size() - commaPos - 6));
+
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+
+                tileFiles[{x, y}] = entry.path();
+            }
+            catch (const std::exception& e)
+            {
+                Log(Debug::Warning) << "Failed to parse filename: " << filename << " - " << e.what();
+                continue;
+            }
+        }
+
+        if (tileFiles.empty())
+        {
+            Log(Debug::Warning) << "No local map tiles found in: " << localMapPath;
+            mGeneratingTileWorldMap = false;
+            return;
+        }
+
+        Log(Debug::Info) << "Found " << tileFiles.size() << " local map tiles";
+        Log(Debug::Info) << "Bounds: X=[" << minX << ", " << maxX << "], Y=[" << minY << ", " << maxY << "]";
+
+        // Step 2: Create the output image
+        const int targetSize = 256 / mTilemapDownscaleFactor;
+        const int width = (maxX - minX + 1) * targetSize;
+        const int height = (maxY - minY + 1) * targetSize;
+
+        osg::ref_ptr<osg::Image> tilemapImage = new osg::Image;
+        tilemapImage->allocateImage(width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+        // Fill with background color (convert from 0-1 range to 0-255)
+        unsigned char* data = tilemapImage->data();
+        unsigned char bgR = static_cast<unsigned char>(backgroundColor.x() * 255.0f);
+        unsigned char bgG = static_cast<unsigned char>(backgroundColor.y() * 255.0f);
+        unsigned char bgB = static_cast<unsigned char>(backgroundColor.z() * 255.0f);
+        unsigned char bgA = waterAlphaMode ? 0 : 255;
+
+        for (int i = 0; i < width * height; ++i)
+        {
+            data[i * 4 + 0] = bgR;
+            data[i * 4 + 1] = bgG;
+            data[i * 4 + 2] = bgB;
+            data[i * 4 + 3] = bgA;
+        }
+
+        // Step 3: Load each tile, downscale and place in output
+        for (const auto& [coords, filepath] : tileFiles)
+        {
+            int gridX = coords.first;
+            int gridY = coords.second;
+
+            osg::ref_ptr<osg::Image> tileImage = osgDB::readImageFile(filepath.string());
+            if (!tileImage || tileImage->s() == 0 || tileImage->t() == 0)
+            {
+                Log(Debug::Warning) << "Failed to load tile image: " << filepath;
+                continue;
+            }
+
+            // Downscale from 256x256 to target size based on downscale factor
+            const int targetSize = 256 / mTilemapDownscaleFactor;
+            osg::ref_ptr<osg::Image> scaledTile = new osg::Image;
+            scaledTile->allocateImage(targetSize, targetSize, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+            // Simple nearest-neighbor downscaling
+            for (int y = 0; y < targetSize; ++y)
+            {
+                for (int x = 0; x < targetSize; ++x)
+                {
+                    int srcX = (x * tileImage->s()) / targetSize;
+                    int srcY = (y * tileImage->t()) / targetSize;
+
+                    unsigned char* srcPixel = tileImage->data(srcX, srcY);
+                    unsigned char* dstPixel = scaledTile->data(x, y);
+
+                    int numComponents = osg::Image::computeNumComponents(tileImage->getPixelFormat());
+                    for (int c = 0; c < numComponents && c < 3; ++c)
+                    {
+                        dstPixel[c] = srcPixel[c];
+                    }
+                    dstPixel[3] = 255;
+                }
+            }
+
+            // Place scaled tile in output image
+            int destX = (gridX - minX) * targetSize;
+            int destY = (gridY - minY) * targetSize;
+
+            for (int y = 0; y < targetSize; ++y)
+            {
+                for (int x = 0; x < targetSize; ++x)
+                {
+                    unsigned char* srcPixel = scaledTile->data(x, y);
+                    unsigned char* dstPixel = tilemapImage->data(destX + x, destY + y);
+
+                    dstPixel[0] = srcPixel[0];
+                    dstPixel[1] = srcPixel[1];
+                    dstPixel[2] = srcPixel[2];
+                    dstPixel[3] = srcPixel[3];
+                }
+            }
+        }
+
+        // Step 3.5: Compute alpha channel from height data
+        // Prefer raycast-based heights (saved during cell extraction), fall back to VHGT
+        if (waterAlphaMode)
+        {
+            const int vhgtSize = 65;
+            std::filesystem::path localMapPath(mLocalMapOutputPath);
+            std::vector<std::filesystem::path> heightsToRemove;
+
+            for (const auto& [coords, filepath] : tileFiles)
+            {
+                int gridX = coords.first;
+                int gridY = coords.second;
+
+                int destX = (gridX - minX) * targetSize;
+                int destY = (gridY - minY) * targetSize;
+
+                // Try raycast-based heights first
+                std::ostringstream heightsFn;
+                heightsFn << "(" << gridX << "," << gridY << ").heights";
+                std::filesystem::path heightsPath = localMapPath / heightsFn.str();
+
+                std::ifstream heightsFile(heightsPath, std::ios::binary);
+                if (heightsFile)
+                {
+                    std::vector<float> rayHeights(vhgtSize * vhgtSize);
+                    heightsFile.read(reinterpret_cast<char*>(rayHeights.data()),
+                        static_cast<std::streamsize>(rayHeights.size() * sizeof(float)));
+
+                    if (heightsFile.gcount() == static_cast<std::streamsize>(rayHeights.size() * sizeof(float)))
+                    {
+                        for (int ty = 0; ty < targetSize; ++ty)
+                        {
+                            int vy = (ty * (vhgtSize - 1)) / targetSize;
+                            for (int tx = 0; tx < targetSize; ++tx)
+                            {
+                                int vx = (tx * (vhgtSize - 1)) / targetSize;
+
+                                float heightVal = rayHeights[vy * vhgtSize + vx] / 128.0f;
+                                float normalizedHeight = heightVal / (heightVal > 0.0f ? 128.0f : 16.0f);
+
+                                float alphaVal = 1.0f;
+                                if (normalizedHeight < 0.0f)
+                                    alphaVal = std::clamp(1.0f + normalizedHeight * 2.f, 0.0f, 1.0f);
+
+                                unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
+                                dstPixel[3] = static_cast<unsigned char>(alphaVal * 255.0f);
+                            }
+                        }
+                        heightsFile.close();
+                        heightsToRemove.push_back(heightsPath);
+                        continue; // used raycast heights, skip VHGT
+                    }
+                }
+
+                // Fall back to VHGT
+                const ESM::Land* land = mStore.get<ESM::Land>().search(gridX, gridY);
+                if (!land || !(land->mDataTypes & ESM::Land::DATA_VHGT))
+                {
+                    for (int ty = 0; ty < targetSize; ++ty)
+                    {
+                        for (int tx = 0; tx < targetSize; ++tx)
+                        {
+                            unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
+                            dstPixel[3] = 0.0f;
+                        }
+                    }
+                    continue;
+                }
+
+                land->loadData(ESM::Land::DATA_VHGT);
+                const ESM::Land::LandData* ld = land->getLandData(ESM::Land::DATA_VHGT);
+                if (!ld)
+                    continue;
+
+                for (int ty = 0; ty < targetSize; ++ty)
+                {
+                    int vy = (ty * (vhgtSize - 1)) / targetSize;
+
+                    for (int tx = 0; tx < targetSize; ++tx)
+                    {
+                        int vx = (tx * (vhgtSize - 1)) / targetSize;
+
+                        float heightVal = ld->mHeights[vy * vhgtSize + vx] / 128.0f;
+                        float normalizedHeight = heightVal / (heightVal > 0.0f ? 128.0f : 16.0f);
+
+                        float alphaVal = 1.0f;
+                        if (normalizedHeight < 0.0f)
+                            alphaVal = std::clamp(1.0f + normalizedHeight * 2.f, 0.0f, 1.0f);
+
+                        unsigned char* dstPixel = tilemapImage->data(destX + tx, destY + ty);
+                        dstPixel[3] = static_cast<unsigned char>(alphaVal * 255.0f);
+                    }
+                }
+            }
+
+            if (!mKeepTempData)
+                for (const auto& p : heightsToRemove)
+                {
+                    std::error_code ec;
+                    std::filesystem::remove(p, ec);
+                }
+        }
+
+        // Step 4: Save map.png
+        std::filesystem::path tilemapPath = tilemapDirPath / "map.png";
+        if (osgDB::writeImageFile(*tilemapImage, tilemapPath.string()))
+        {
+            Log(Debug::Info) << "Successfully saved tilemap to: " << tilemapPath;
+        }
+        else
+        {
+            Log(Debug::Error) << "Failed to write tilemap to: " << tilemapPath;
+            mGeneratingTileWorldMap = false;
+            return;
+        }
+
+        // Step 4.5: Split the tilemap into 16x16 cell blocks
+        const int pixelsPerCell = 256 / mTilemapDownscaleFactor;
+        const int blockSizeCells = 16;
+        const int blockSizePixels = blockSizeCells * pixelsPerCell;
+
+        auto getBlockCoord = [](int coord) -> int {
+            return coord < 0 ? (coord + 1) / blockSizeCells - 1 : coord / blockSizeCells;
+        };
+
+        const int minBlockX = getBlockCoord(minX);
+        const int maxBlockX = getBlockCoord(maxX);
+        const int minBlockY = getBlockCoord(minY);
+        const int maxBlockY = getBlockCoord(maxY);
+
+        int savedBlocksCount = 0;
+
+        for (int blockX = minBlockX; blockX <= maxBlockX; ++blockX)
+        {
+            for (int blockY = minBlockY; blockY <= maxBlockY; ++blockY)
+            {
+                const int blockStartX = blockX * blockSizeCells;
+                const int blockStartY = blockY * blockSizeCells;
+
+                const int pixelStartX = (blockStartX - minX) * pixelsPerCell;
+                const int pixelStartY = (blockStartY - minY) * pixelsPerCell;
+
+                osg::ref_ptr<osg::Image> blockImage = new osg::Image;
+                blockImage->allocateImage(blockSizePixels, blockSizePixels, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+                unsigned char* blockData = blockImage->data();
+                for (int i = 0; i < blockSizePixels * blockSizePixels; ++i)
+                {
+                    blockData[i * 4 + 0] = bgR;
+                    blockData[i * 4 + 1] = bgG;
+                    blockData[i * 4 + 2] = bgB;
+                    blockData[i * 4 + 3] = bgA;
+                }
+
+                bool hasNonBackgroundPixels = false;
+
+                const int copyStartX = std::max(0, pixelStartX);
+                const int copyStartY = std::max(0, pixelStartY);
+                const int copyEndX = std::min(width - 1, pixelStartX + blockSizePixels - 1);
+                const int copyEndY = std::min(height - 1, pixelStartY + blockSizePixels - 1);
+
+                if (copyStartX <= copyEndX && copyStartY <= copyEndY)
+                {
+                    for (int srcY = copyStartY; srcY <= copyEndY; ++srcY)
+                    {
+                        for (int srcX = copyStartX; srcX <= copyEndX; ++srcX)
+                        {
+                            const int destX = srcX - pixelStartX;
+                            const int destY = srcY - pixelStartY;
+
+                            if (destX < 0 || destX >= blockSizePixels || destY < 0 || destY >= blockSizePixels)
+                                continue;
+
+                            unsigned char* srcPixel = tilemapImage->data(srcX, srcY);
+                            unsigned char* destPixel = blockImage->data(destX, destY);
+
+                            destPixel[0] = srcPixel[0];
+                            destPixel[1] = srcPixel[1];
+                            destPixel[2] = srcPixel[2];
+                            destPixel[3] = srcPixel[3];
+
+                            if (!hasNonBackgroundPixels
+                                && (srcPixel[0] != bgR || srcPixel[1] != bgG || srcPixel[2] != bgB || srcPixel[3] != bgA))
+                            {
+                                hasNonBackgroundPixels = true;
+                            }
+                        }
+                    }
+                }
+
+                if (hasNonBackgroundPixels)
+                {
+                    std::ostringstream filename;
+                    filename << "(" << blockX << "," << blockY << ").png";
+                    std::filesystem::path outputPath = tilemapDirPath / filename.str();
+
+                    if (!osgDB::writeImageFile(*blockImage, outputPath.string()))
+                    {
+                        Log(Debug::Warning) << "Failed to write tilemap block (" << blockX << "," << blockY << ") to " << outputPath;
+                    }
+                    else
+                    {
+                        savedBlocksCount++;
+                    }
+                }
+            }
+        }
+
+        Log(Debug::Info) << "Saved " << savedBlocksCount << " tilemap blocks (skipped empty blocks)";
+
+        // Step 5: Save mapInfo.yaml
+        std::filesystem::path infoPath = tilemapDirPath / "mapInfo.yaml";
+        std::ofstream infoFile(infoPath);
+
+        if (!infoFile)
+        {
+            Log(Debug::Error) << "Failed to create tilemapInfo.yaml: " << infoPath;
+            mGeneratingTileWorldMap = false;
+            return;
+        }
+
+        infoFile << "version: 2\n";
+        infoFile << "width: " << width << "\n";
+        infoFile << "height: " << height << "\n";
+        infoFile << "pixelsPerCell: " << pixelsPerCell << "\n";
+        infoFile << "waterWithAlpha: " << (waterAlphaMode ? "true" : "false") << "\n";
+        infoFile << "gridX:\n";
+        infoFile << "  min: " << minX << "\n";
+        infoFile << "  max: " << maxX << "\n";
+        infoFile << "gridY:\n";
+        infoFile << "  min: " << minY << "\n";
+        infoFile << "  max: " << maxY << "\n";
+        infoFile << "file: \"map.png\"\n";
+        infoFile << "bColor: [" << backgroundColor.x() << ", " << backgroundColor.y() << ", " << backgroundColor.z()
+                 << "]\n";
+
+        infoFile.close();
+
+        Log(Debug::Info) << "Successfully saved tilemapInfo.yaml to: " << infoPath;
+        
+        mGeneratingTileWorldMap = false;
     }
 }

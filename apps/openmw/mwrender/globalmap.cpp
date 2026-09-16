@@ -32,6 +32,11 @@
 
 namespace
 {
+    struct Rgb24
+    {
+        uint8_t r, g, b;
+        Rgb24(uint8_t r_, uint8_t g_, uint8_t b_) : r(r_), g(g_), b(b_) {}
+    };
 
     // Create a screen-aligned quad with given texture coordinates.
     // Assumes a top-left origin of the sampled image.
@@ -126,7 +131,7 @@ namespace MWRender
     {
     public:
         CreateMapWorkItem(int width, int height, int minX, int minY, int maxX, int maxY, int cellSize,
-            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut)
+            const MWWorld::Store<ESM::Land>& landStore, osg::ref_ptr<osg::Image> colorLut, int borderWidth, bool waterAlpha)
             : mWidth(width)
             , mHeight(height)
             , mMinX(minX)
@@ -136,13 +141,15 @@ namespace MWRender
             , mCellSize(cellSize)
             , mLandStore(landStore)
             , mColorLut(colorLut)
+            , mBorderWidth(borderWidth)
+            , mWaterAlpha(waterAlpha)
         {
         }
 
         void doWork() override
         {
             osg::ref_ptr<osg::Image> image = new osg::Image;
-            image->allocateImage(mWidth, mHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
+            image->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
 
             osg::ref_ptr<osg::Image> alphaImage = new osg::Image;
             alphaImage->allocateImage(mWidth, mHeight, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
@@ -153,30 +160,130 @@ namespace MWRender
                 {
                     const ESM::Land* land = mLandStore.search(x, y);
 
-                    for (int cellY = 0; cellY < mCellSize; ++cellY)
+                    if (land != nullptr && (land->mDataTypes & ESM::Land::DATA_VHGT))
                     {
-                        for (int cellX = 0; cellX < mCellSize; ++cellX)
+                        land->loadData(ESM::Land::DATA_VHGT);
+                        const ESM::Land::LandData* data = land->getLandData(ESM::Land::DATA_VHGT);
+
+                        if (data)
                         {
-                            int vertexX = (cellX * 9) / mCellSize; // 0..8
-                            int vertexY = (cellY * 9) / mCellSize; // 0..8
+                            const int vhgtSize = 65;
 
-                            int texelX = (x - mMinX) * mCellSize + cellX;
-                            int texelY = (y - mMinY) * mCellSize + cellY;
+                            for (int cellY = 0; cellY < mCellSize; ++cellY)
+                            {
+                                for (int cellX = 0; cellX < mCellSize; ++cellX)
+                                {
+                                    int vx = (cellX * (vhgtSize - 1)) / mCellSize;
+                                    int vy = (cellY * (vhgtSize - 1)) / mCellSize;
 
-                            int lutIndex = 0;
-                            // Converting [-128; 127] WNAM range to [0; 255] index
-                            if (land != nullptr && (land->mDataTypes & ESM::Land::DATA_WNAM))
-                                lutIndex = static_cast<int>(land->mWnam[vertexY * 9 + vertexX]) + 128;
+                                    float height = data->mHeights[vy * vhgtSize + vx] / 128.0f;
 
-                            // Use getColor to handle all pixel format conversions automatically
-                            osg::Vec4 color = mColorLut->getColor(lutIndex, 0);
+                                    // Convert height to LUT index using the same method as WNAM generation
+                                    // Normalize height: positive heights divided by 128, negative by 16
+                                    float normalizedHeight = height / (height > 0.0f ? 128.0f : 16.0f);
+                                    // Clamp to [-1, 1] range and convert to [0, 255] index
+                                    int lutIndex = static_cast<int>(std::clamp(normalizedHeight, -1.0f, 1.0f) * 127.0f) + 128;
 
-                            // Use setColor to write to output images
-                            image->setColor(color, texelX, texelY);
+                                    int texelX = (x - mMinX) * mCellSize + cellX;
+                                    int texelY = (y - mMinY) * mCellSize + cellY;
 
-                            // Set alpha based on lutIndex threshold
-                            osg::Vec4 alpha(0.0f, 0.0f, 0.0f, lutIndex < 128 ? 0.0f : 1.0f);
-                            alphaImage->setColor(alpha, texelX, texelY);
+                                    float alphaVal = 1.0f;
+                                    if (normalizedHeight < 0.0f)
+                                        alphaVal = mWaterAlpha ? std::clamp(1.0f + normalizedHeight, 0.0f, 1.0f) : 1.0f;
+
+                                    osg::Vec4 color = mColorLut->getColor(lutIndex, 0);
+                                    color[3] = alphaVal;
+                                    image->setColor(color, texelX, texelY);
+
+                                    osg::Vec4 alpha(0.0f, 0.0f, 0.0f, lutIndex < 128 ? 0.0f : 1.0f);
+                                    alphaImage->setColor(alpha, texelX, texelY);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int cellY = 0; cellY < mCellSize; ++cellY)
+                        {
+                            for (int cellX = 0; cellX < mCellSize; ++cellX)
+                            {
+                                int texelX = (x - mMinX) * mCellSize + cellX;
+                                int texelY = (y - mMinY) * mCellSize + cellY;
+
+                                osg::Vec4 color = mColorLut->getColor(0, 0);
+                                if (mWaterAlpha)
+                                    color[3] = 0.0f;
+
+                                image->setColor(color, texelX, texelY);
+
+                                // Set alpha based on lutIndex threshold
+                                osg::Vec4 alpha(0.0f, 0.0f, 0.0f, 0.0f);
+                                alphaImage->setColor(alpha, texelX, texelY);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Draw borders if requested (borderWidth > 0)
+            if (mBorderWidth > 0)
+            {
+                // Create border mask - mark pixels at the edge of land/water boundary
+                std::vector<bool> borderMask(mWidth * mHeight, false);
+                
+                for (int y = 0; y < mHeight; ++y)
+                {
+                    for (int x = 0; x < mWidth; ++x)
+                    {
+                        // Check if this pixel is land (alpha >= 128)
+                        uint8_t alpha = alphaImage->data()[y * mWidth + x];
+                        if (alpha < 128)
+                            continue;
+                        
+                        // Check if any neighbor is water (alpha < 128)
+                        bool isBorder = false;
+                        if (x == 0 || alphaImage->data()[y * mWidth + (x - 1)] < 128)
+                            isBorder = true;
+                        else if (x == mWidth - 1 || alphaImage->data()[y * mWidth + (x + 1)] < 128)
+                            isBorder = true;
+                        else if (y == 0 || alphaImage->data()[(y - 1) * mWidth + x] < 128)
+                            isBorder = true;
+                        else if (y == mHeight - 1 || alphaImage->data()[(y + 1) * mWidth + x] < 128)
+                            isBorder = true;
+                        
+                        borderMask[y * mWidth + x] = isBorder;
+                    }
+                }
+                
+                // Apply border color (using highest LUT index for bright color)
+                osg::Vec4 borderColor = mColorLut->getColor(255, 0);
+                Rgb24 borderRgb(static_cast<uint8_t>(borderColor.r() * 255),
+                               static_cast<uint8_t>(borderColor.g() * 255),
+                               static_cast<uint8_t>(borderColor.b() * 255));
+                
+                // Apply borders with configurable thickness
+                const int stroke = mBorderWidth;
+                for (int y = 0; y < mHeight; ++y)
+                {
+                    for (int x = 0; x < mWidth; ++x)
+                    {
+                        if (!borderMask[y * mWidth + x])
+                            continue;
+                        
+                        int minX = std::max(0, x - stroke + 1);
+                        int maxX = std::min(mWidth - 1, x + stroke - 1);
+                        int minY = std::max(0, y - stroke + 1);
+                        int maxY = std::min(mHeight - 1, y + stroke - 1);
+                        
+                        for (int yy = minY; yy <= maxY; ++yy)
+                        {
+                            for (int xx = minX; xx <= maxX; ++xx)
+                            {
+                                unsigned char* pixel = image->data(xx, yy);
+                                pixel[0] = borderRgb.r;
+                                pixel[1] = borderRgb.g;
+                                pixel[2] = borderRgb.b;
+                            }
                         }
                     }
                 }
@@ -219,6 +326,8 @@ namespace MWRender
         int mCellSize;
         const MWWorld::Store<ESM::Land>& mLandStore;
         osg::ref_ptr<osg::Image> mColorLut;
+        int mBorderWidth;
+        bool mWaterAlpha;
 
         osg::ref_ptr<osg::Texture2D> mBaseTexture;
         osg::ref_ptr<osg::Texture2D> mAlphaTexture;
@@ -249,6 +358,8 @@ namespace MWRender
         , mMaxX(0)
         , mMinY(0)
         , mMaxY(0)
+        , mBorderWidth(0)
+        , mWaterAlpha(true)
     {
     }
 
@@ -289,18 +400,33 @@ namespace MWRender
         // Load color LUT texture
         constexpr VFS::Path::NormalizedView colorLutPath("textures/omw_map_color_palette.dds");
         auto resourceSystem = MWBase::Environment::get().getResourceSystem();
-        osg::ref_ptr<osg::Image> colorLut = resourceSystem->getImageManager()->getImage(colorLutPath);
+        mColorLut = resourceSystem->getImageManager()->getImage(colorLutPath);
 
         // Validate LUT dimensions
-        if (!colorLut || colorLut->s() != 256 || colorLut->t() != 1)
+        if (!mColorLut || mColorLut->s() != 256 || mColorLut->t() != 1)
         {
             throw std::runtime_error("Global map color LUT must be 256x1 pixels, got "
-                + std::to_string(colorLut ? colorLut->s() : 0) + "x" + std::to_string(colorLut ? colorLut->t() : 0));
+                + std::to_string(mColorLut ? mColorLut->s() : 0) + "x" + std::to_string(mColorLut ? mColorLut->t() : 0));
         }
 
         mWorkItem = new CreateMapWorkItem(
-            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), colorLut);
+            mWidth, mHeight, mMinX, mMinY, mMaxX, mMaxY, cellSize, esmStore.get<ESM::Land>(), mColorLut, mBorderWidth, mWaterAlpha);
         mWorkQueue->addWorkItem(mWorkItem);
+    }
+
+    void GlobalMap::setBorderWidth(int borderWidth)
+    {
+        mBorderWidth = borderWidth;
+    }
+
+    void GlobalMap::setWaterAlphaMode(bool waterAlpha)
+    {
+        mWaterAlpha = waterAlpha;
+    }
+
+    bool GlobalMap::getWaterAlphaMode() const
+    {
+        return mWaterAlpha;
     }
 
     void GlobalMap::worldPosToImageSpace(float x, float z, float& imageX, float& imageY)
@@ -638,5 +764,15 @@ namespace MWRender
         // Use deep copy to avoid any sychronization
         mWritePng = new WritePng(new osg::Image(*mOverlayImage, osg::CopyOp::DEEP_COPY_ALL));
         mWorkQueue->addWorkItem(mWritePng, /*front=*/true);
+    }
+
+    osg::Vec3f GlobalMap::getBackgroundColor() const
+    {
+        if (mColorLut)
+        {
+            osg::Vec4 color = mColorLut->getColor(0, 0);
+            return osg::Vec3f(color.r(), color.g(), color.b());
+        }
+        return osg::Vec3f(0.0f, 0.0f, 0.0f);
     }
 }

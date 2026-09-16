@@ -8,6 +8,7 @@
 #include <span>
 #include <string_view>
 #include <vector>
+#include <map>
 
 #include <components/misc/rng.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -484,6 +485,8 @@ namespace MWBase
 
         virtual const std::vector<std::string>& getContentFiles() const = 0;
 
+        virtual std::string getContentFileDir(const std::string& contentFile) const = 0;
+
         virtual void breakInvisibility(const MWWorld::Ptr& actor) = 0;
 
         // Allow NPCs to use torches?
@@ -603,6 +606,41 @@ namespace MWBase
         virtual MWWorld::DateTimeManager* getTimeManager() = 0;
 
         virtual void setActorActive(const MWWorld::Ptr& ptr, bool value) = 0;
+
+        virtual std::string getWorldMapOutputPath() const = 0;
+        ///< Get the world map output path from options or default
+
+        virtual std::string getLocalMapOutputPath() const = 0;
+        ///< Get the local map output path from options or default
+
+        virtual bool getOverwriteMaps() const = 0;
+        ///< Get the overwrite maps flag
+
+        virtual void extractWorldMap(int cellSize = 32, int borderWidth = 0, bool waterAlphaMode = true) = 0;
+        ///< Extract world map using path from options or default
+        ///< @param cellSize Size of each cell in pixels (default: 32)
+        ///< @param borderWidth Width of borders around land areas with height >= 0 in pixels (default: 0, disabled)
+
+        virtual void extractLocalMaps(bool playerCellOnly = false) = 0;
+        ///< Extract local maps using path from options or default
+
+        virtual bool isMapExtractionActive() const = 0;
+        ///< Check if map extraction is currently in progress
+
+        virtual void saveToLocalMapDir(std::string_view filename, std::string_view stringData) = 0;
+        ///< Save string data to a file in the local map output directory
+
+        virtual void generateTileWorldMap(const osg::Vec3f& backgroundColor, bool waterAlphaMode = true) = 0;
+        ///< Generate a tiled world map from local map tiles with the specified background color
+        
+        virtual void setWorldMapOutputPath(const std::string& path) = 0;
+        ///< Set the world map output path
+        
+        virtual void setLocalMapOutputPath(const std::string& path) = 0;
+        ///< Set the local map output path
+        
+        virtual const std::map<std::string, std::string>& getLaunchParameters() const = 0;
+        ///< Get launch parameters from command line and configuration files
     };
 }
 

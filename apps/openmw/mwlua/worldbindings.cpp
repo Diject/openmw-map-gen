@@ -1,5 +1,7 @@
 #include "worldbindings.hpp"
 
+#include <set>
+
 #include <components/esm3/loadacti.hpp>
 #include <components/esm3/loadalch.hpp>
 #include <components/esm3/loadarmo.hpp>
@@ -17,6 +19,7 @@
 #include <components/esm3/loadstat.hpp>
 #include <components/esm3/loadweap.hpp>
 #include <components/lua/luastate.hpp>
+#include <components/misc/color.hpp>
 #include <components/misc/finitevalues.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -282,6 +285,215 @@ namespace MWLua
 
         api["vfx"] = initWorldVfxBindings(context);
 
-        return LuaUtil::makeReadOnly(api);
+        api["extractWorldMap"] = [context, lua = context.mLua](sol::optional<int> cellSize, sol::optional<int> borderWidth, sol::optional<bool> waterAlphaMode) {
+            checkGameInitialized(lua);
+            int size = cellSize.value_or(32);
+            int width = borderWidth.value_or(0);
+            bool waterAlpha = waterAlphaMode.value_or(true);
+            context.mLuaManager->addAction(
+                [size, width, waterAlpha] {
+                    MWBase::Environment::get().getWorld()->extractWorldMap(size, width, waterAlpha);
+                },
+                "extractWorldMapAction");
+        };
+
+        api["extractLocalMaps"] = [context, lua = context.mLua](sol::optional<bool> playerCellOnly) {
+            checkGameInitialized(lua);
+            bool onlyPlayerCell = playerCellOnly.value_or(false);
+            context.mLuaManager->addAction(
+                [onlyPlayerCell] {
+                    MWBase::Environment::get().getWorld()->extractLocalMaps(onlyPlayerCell);
+                },
+                "extractLocalMapsAction");
+        };
+
+        api["enableExtractionMode"] = [context, lua = context.mLua]() {
+            checkGameInitialized(lua);
+            context.mLuaManager->addAction(
+                [] {
+                    auto world = MWBase::Environment::get().getWorld();
+                    world->toggleCollisionMode();
+                    MWBase::Environment::get().getMechanicsManager()->toggleAI();
+                    world->toggleScripts();
+                    world->toggleGodMode();
+                    world->toggleVanityMode(false);
+                },
+                "enableExtractionModeAction");
+        };
+
+        api["disableExtractionMode"] = [context, lua = context.mLua]() {
+            checkGameInitialized(lua);
+            context.mLuaManager->addAction(
+                [] {
+                    auto world = MWBase::Environment::get().getWorld();
+                    if (!world->getGodModeState())
+                        world->toggleGodMode();
+                    if (!world->getScriptsEnabled())
+                        world->toggleScripts();
+                    if (!MWBase::Environment::get().getMechanicsManager()->isAIActive())
+                        MWBase::Environment::get().getMechanicsManager()->toggleAI();
+                    world->toggleCollisionMode();
+                    world->toggleVanityMode(false);
+                },
+                "disableExtractionModeAction");
+        };
+
+        api["isMapExtractionActive"] = [lua = context.mLua]() -> bool {
+            checkGameInitialized(lua);
+            return MWBase::Environment::get().getWorld()->isMapExtractionActive();
+        };
+
+        api["getOverwriteFlag"] = [lua = context.mLua]() -> bool {
+            checkGameInitialized(lua);
+            return MWBase::Environment::get().getWorld()->getOverwriteMaps();
+        };
+
+        api["getExistingLocalMapIds"] = [lua = context.mLua](sol::this_state luaState) -> sol::table {
+            checkGameInitialized(lua);
+            sol::state_view state(luaState);
+            sol::table result = state.create_table();
+            
+            std::string localMapPath = MWBase::Environment::get().getWorld()->getLocalMapOutputPath();
+            std::filesystem::path dir(localMapPath);
+            
+            if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+                return result;
+            
+            // Use set to store unique filenames (without extension)
+            std::set<std::string> uniqueNames;
+            
+            for (const auto& entry : std::filesystem::directory_iterator(dir))
+            {
+                if (entry.is_regular_file())
+                {
+                    std::string ext = entry.path().extension().string();
+                    // Check for .yaml, .png, or .tga extensions
+                    if (ext == ".yaml" || ext == ".png" || ext == ".tga")
+                    {
+                        std::string filename = entry.path().stem().string();
+                        uniqueNames.insert(filename);
+                    }
+                }
+            }
+            
+            // Convert set to lua table
+            int index = 1;
+            for (const auto& name : uniqueNames)
+            {
+                result[index++] = name;
+            }
+            
+            return result;
+        };
+
+        api["saveToLocalMapDir"] = [context, lua = context.mLua](std::string_view filename, std::string_view stringData) {
+            checkGameInitialized(lua);
+            context.mLuaManager->addAction(
+                [filename = std::string(filename), stringData = std::string(stringData)] {
+                    MWBase::Environment::get().getWorld()->saveToLocalMapDir(filename, stringData);
+                },
+                "saveToLocalMapDirAction");
+        };
+
+        api["generateTileWorldMap"] = [context, lua = context.mLua](sol::optional<Misc::Color> backgroundColor, sol::optional<bool> waterAlphaMode) {
+            checkGameInitialized(lua);
+            context.mLuaManager->addAction(
+                [backgroundColor, waterAlphaMode]() {
+                    osg::Vec3f bgColor(0.255f, 0.224f, 0.180f);
+                    if (backgroundColor.has_value())
+                    {
+                        bgColor = osg::Vec3f(backgroundColor->r(), backgroundColor->g(), backgroundColor->b());
+                    }
+                    const bool waterAlpha = waterAlphaMode.value_or(true);
+                    MWBase::Environment::get().getWorld()->generateTileWorldMap(bgColor, waterAlpha);
+                },
+                "generateTileWorldMapAction");
+        };
+
+        api["setWorldMapOutputPath"] = [lua = context.mLua](const std::string& path) {
+            checkGameInitialized(lua);
+            MWBase::Environment::get().getWorld()->setWorldMapOutputPath(path);
+        };
+
+        api["setLocalMapOutputPath"] = [lua = context.mLua](const std::string& path) {
+            checkGameInitialized(lua);
+            MWBase::Environment::get().getWorld()->setLocalMapOutputPath(path);
+        };
+
+        api["clearMapOutputDirs"] = [lua = context.mLua]() {
+            checkGameInitialized(lua);
+            auto clearDir = [](const std::string& dirPath) {
+                std::filesystem::path dir(dirPath);
+                if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+                    return;
+
+                for (const auto& entry : std::filesystem::directory_iterator(dir))
+                {
+                    if (entry.is_regular_file())
+                    {
+                        std::string ext = entry.path().extension().string();
+                        if (ext == ".yaml" || ext == ".png" || ext == ".heights")
+                        {
+                            std::filesystem::remove(entry.path());
+                        }
+                    }
+                }
+            };
+
+            auto worldMapPath = MWBase::Environment::get().getWorld()->getWorldMapOutputPath();
+            clearDir(worldMapPath);
+            clearDir((std::filesystem::path(worldMapPath) / "tilemap").string());
+            clearDir(MWBase::Environment::get().getWorld()->getLocalMapOutputPath());
+        };
+
+    api["getContentFileDir"] = [lua = context.mLua](const std::string& contentFile) -> sol::object {
+        checkGameInitialized(lua);
+        std::string dir = MWBase::Environment::get().getWorld()->getContentFileDir(contentFile);
+        if (dir.empty())
+            return sol::nil;
+        return sol::make_object(lua->unsafeState(), dir);
+    };
+
+    api["getLaunchParameters"] = [lua = context.mLua](sol::this_state luaState) -> sol::table {
+        checkGameInitialized(lua);
+        sol::state_view state(luaState);
+        sol::table result = state.create_table();
+        
+        const auto& params = MWBase::Environment::get().getWorld()->getLaunchParameters();
+        for (const auto& [key, value] : params)
+        {
+            result[key] = value;
+        }
+        
+        return result;
+    };
+
+    api["setLaunchParameter"] = [lua = context.mLua](const std::string& parameterName, sol::object value) {
+        checkGameInitialized(lua);
+        std::string stringValue;
+        if (value.is<std::string>())
+        {
+            stringValue = value.as<std::string>();
+        }
+        else if (value.is<bool>())
+        {
+            stringValue = value.as<bool>() ? "true" : "false";
+        }
+        else if (value.is<double>())
+        {
+            stringValue = std::to_string(value.as<double>());
+        }
+        else if (value.is<int>())
+        {
+            stringValue = std::to_string(value.as<int>());
+        }
+        else
+        {
+            throw std::runtime_error("setLaunchParameter: value must be a string, boolean, or number");
+        }
+        MWBase::Environment::getMutable().setLaunchParameter(parameterName, stringValue);
+    };
+
+    return LuaUtil::makeReadOnly(api);
     }
 }

@@ -85,6 +85,9 @@ set(OPENMW_VERSION_RELEASE 0)
 set(OPENMW_LUA_API_REVISION 129)
 set(OPENMW_POSTPROCESSING_API_REVISION 5)
 
+# MapExtractor fork version
+set(MAPEXTRACTOR_VERSION_BUILD 8)  # Build number for MapExtractor fork
+
 set(OPENMW_VERSION_COMMITHASH "")
 set(OPENMW_VERSION_TAGHASH "")
 set(OPENMW_VERSION_COMMITDATE "")
@@ -142,7 +145,7 @@ else()
 endif()
 option(OSG_STATIC "Link static build of OpenSceneGraph into the binaries" ${_osg_static_default})
 
-option(OPENMW_USE_SYSTEM_MYGUI "Use system provided mygui library" ON)
+option(OPENMW_USE_SYSTEM_MYGUI "Use system provided mygui library" OFF)
 if(OPENMW_USE_SYSTEM_MYGUI)
     set(_mygui_static_default OFF)
 else()
@@ -411,6 +414,33 @@ if (WIN32)
         _UNICODE
         UNICODE
     )
+    
+    # Embed Windows manifest
+    if(MSVC)
+        # Generate manifest from template with current version
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/CI/windows-manifest.xml.in"
+            "${CMAKE_BINARY_DIR}/windows-manifest.xml"
+            @ONLY
+        )
+        set(OPENMW_MANIFEST_FILE "${CMAKE_BINARY_DIR}/windows-manifest.xml")
+        message(STATUS "Generated Windows manifest v${OPENMW_VERSION}: ${OPENMW_MANIFEST_FILE}")
+        
+        # Generate .rc files with absolute path to manifest
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/files/windows/openmw.rc.in"
+            "${CMAKE_BINARY_DIR}/openmw.rc"
+            @ONLY
+        )
+        configure_file(
+            "${CMAKE_SOURCE_DIR}/files/windows/launcher.rc.in"
+            "${CMAKE_BINARY_DIR}/launcher.rc"
+            @ONLY
+        )
+        
+        set(OPENMW_RC_FILE "${CMAKE_BINARY_DIR}/openmw.rc")
+        set(LAUNCHER_RC_FILE "${CMAKE_BINARY_DIR}/launcher.rc")
+    endif()
 endif()
 
 if(OPENMW_USE_SYSTEM_BULLET)
@@ -990,15 +1020,22 @@ elseif(NOT APPLE)
         INSTALL(DIRECTORY "${INSTALL_SOURCE}/resources" DESTINATION ".")
 
         SET(CPACK_GENERATOR "NSIS")
-        SET(CPACK_PACKAGE_EXECUTABLES "openmw;OpenMW")
+        SET(CPACK_PACKAGE_NAME "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_VENDOR "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_VERSION "${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}")
+        SET(CPACK_PACKAGE_VERSION_MAJOR ${OPENMW_VERSION_MAJOR})
+        SET(CPACK_PACKAGE_VERSION_MINOR ${OPENMW_VERSION_MINOR})
+        SET(CPACK_PACKAGE_VERSION_PATCH ${OPENMW_VERSION_RELEASE})
+        SET(CPACK_PACKAGE_VERSION_TWEAK ${MAPEXTRACTOR_VERSION_BUILD})
+        SET(CPACK_PACKAGE_EXECUTABLES "openmw;OpenMW MapExtractor")
         IF(BUILD_LAUNCHER)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-launcher;OpenMW Launcher")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-launcher;OpenMW-MapExtractor Launcher")
         ENDIF(BUILD_LAUNCHER)
         IF(BUILD_OPENCS)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-cs;OpenMW Construction Set")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-cs;OpenMW-MapExtractor Construction Set")
         ENDIF(BUILD_OPENCS)
         IF(BUILD_WIZARD)
-            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-wizard;OpenMW Wizard")
+            SET(CPACK_PACKAGE_EXECUTABLES "${CPACK_PACKAGE_EXECUTABLES};openmw-wizard;OpenMW-MapExtractor Wizard")
         ENDIF(BUILD_WIZARD)
         SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Readme.lnk' '\$INSTDIR\\\\README.txt'")
         SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
@@ -1008,20 +1045,81 @@ elseif(NOT APPLE)
         SET(CPACK_RESOURCE_FILE_README "${OpenMW_SOURCE_DIR}/README.md")
         SET(CPACK_PACKAGE_DESCRIPTION_FILE "${OpenMW_SOURCE_DIR}/README.md")
         SET(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
-        SET(CPACK_NSIS_DISPLAY_NAME "OpenMW ${OPENMW_VERSION}")
-        SET(CPACK_NSIS_HELP_LINK "https:\\\\\\\\www.openmw.org")
-        SET(CPACK_NSIS_URL_INFO_ABOUT "https:\\\\\\\\www.openmw.org")
+        SET(CPACK_NSIS_DISPLAY_NAME "OpenMW-MapExtractor ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}")
+        SET(CPACK_NSIS_HELP_LINK "https:\\\\\\\\github.com\\\\Diject\\\\openmw-map-gen")
+        SET(CPACK_NSIS_URL_INFO_ABOUT "https:\\\\\\\\github.com\\\\Diject\\\\openmw-map-gen")
         SET(CPACK_NSIS_INSTALLED_ICON_NAME "openmw-launcher.exe")
         SET(CPACK_NSIS_MUI_FINISHPAGE_RUN "openmw-launcher.exe")
+        SET(CPACK_NSIS_PACKAGE_NAME "OpenMW-MapExtractor")
+        SET(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenMW-MapExtractor")
         SET(CPACK_NSIS_MUI_ICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_NSIS_MUI_UNIICON "${OpenMW_SOURCE_DIR}/files/windows/openmw.ico")
         SET(CPACK_PACKAGE_ICON "${OpenMW_SOURCE_DIR}\\\\files\\\\openmw.bmp")
+        
+        # Allow only one installation system-wide
+        # Update existing installation or install to new location after uninstalling old one
+        SET(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL OFF)
+        SET(CPACK_NSIS_MODIFY_PATH OFF)
+        
+        # Check for existing installation anywhere
+        SET(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "
+            ReadRegStr $R3 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"InstallPath\\\"
+            StrCmp $R3 \\\"\\\" check_current_dir
+            StrCmp $R3 $INSTDIR check_current_dir ask_uninstall_old
+            
+            ask_uninstall_old:
+                ReadRegStr $R4 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"Version\\\"
+                MessageBox MB_YESNO \\\"OpenMW-MapExtractor $R4 is already installed at:$\\\\n$R3$\\\\n$\\\\nUninstall it and install to $INSTDIR instead?\\\" IDYES uninstall_old
+                Abort
+            
+            uninstall_old:
+                ReadRegStr $R5 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"UninstallString\\\"
+                ExecWait '\\\"$R5\\\" /S _?=$R3' $R6
+                StrCmp $R6 0 cleanup_old_dir
+                MessageBox MB_OK \\\"Failed to uninstall previous version. Please uninstall manually.\\\"
+                Abort
+            
+            cleanup_old_dir:
+                Delete \\\"$R3\\\\Uninstall.exe\\\"
+                RMDir \\\"$R3\\\"
+                Goto check_current_dir
+            
+            check_current_dir:
+                ReadRegStr $R0 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"Version\\\"
+                ReadRegStr $R1 HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"InstallPath\\\"
+                StrCmp $R1 $INSTDIR 0 install_new
+                StrCmp $R0 \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\" ask_reinstall ask_update
+            
+            ask_reinstall:
+                MessageBox MB_YESNO \\\"Version $R0 is already installed. Reinstall?\\\" IDYES install_new
+                Abort
+            
+            ask_update:
+                MessageBox MB_YESNO \\\"Version $R0 is installed. Update to ${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}?\\\" IDYES install_new
+                Abort
+            
+            install_new:
+            "
+        )
+        
+        # Store installation info (single installation only)
+        SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"Version\\\" \\\"${OPENMW_VERSION}.${MAPEXTRACTOR_VERSION_BUILD}\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"InstallPath\\\" \\\"$INSTDIR\\\"
+            WriteRegStr HKLM \\\"Software\\\\OpenMW-MapExtractor\\\" \\\"UninstallString\\\" \\\"$INSTDIR\\\\Uninstall.exe\\\"
+            "
+        )
+        
+        SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
+            DeleteRegKey HKLM \\\"Software\\\\OpenMW-MapExtractor\\\"
+            "
+        )
 
         SET(VCREDIST64 "${OpenMW_BINARY_DIR}/vcredist_x64.exe" CACHE FILEPATH "Path to vcredist_x64.exe")
         if(EXISTS ${VCREDIST64})
             INSTALL(FILES ${VCREDIST64} DESTINATION "redist")
             get_filename_component(REDIST_FILENAME "${VCREDIST64}" NAME)
-            SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+            SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
                 ExecWait '\\\"$INSTDIR\\\\redist\\\\${REDIST_FILENAME}\\\" /q /norestart'
                 RMDir /r \\\"$INSTDIR\\\\redist\\\"
                 ")

@@ -2,10 +2,12 @@
 #include <components/fallback/fallback.hpp>
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/files/conversion.hpp>
 #include <components/misc/osgpluginchecker.hpp>
 #include <components/misc/rng.hpp>
 #include <components/platform/platform.hpp>
 #include <components/version/version.hpp>
+#include <components/settings/values.hpp>
 
 #include "mwgui/debugwindow.hpp"
 
@@ -72,7 +74,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
 
     MWGui::DebugWindow::startLogRecording();
 
-    engine.setGrabMouse(!variables["no-grab"].as<bool>());
+    engine.setGrabMouse(false);
 
     // Font encoding settings
     std::string encoding(variables["encoding"].as<std::string>());
@@ -109,6 +111,23 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
         Log(Debug::Error) << "No content file given (esm/esp, nor omwgame/omwaddon). Aborting...";
         return false;
     }
+    
+    // Store content file directories before filtering
+    std::map<std::string, std::filesystem::path> contentFileDirs;
+    for (const auto& contentFile : content)
+    {
+        for (const auto& dataDir : dataDirs)
+        {
+            std::filesystem::path contentPath = dataDir / contentFile;
+            if (std::filesystem::exists(contentPath))
+            {
+                contentFileDirs[contentFile] = dataDir;
+                break;
+            }
+        }
+    }
+    engine.setContentFileDirs(contentFileDirs);
+    
     engine.addContentFile("builtin.omwscripts");
     std::set<std::string> contentDedupe{ "builtin.omwscripts" };
     for (const auto& contentFile : content)
@@ -122,14 +141,20 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
 
     for (auto& file : content)
     {
+        if (file.ends_with(".omwscripts"))
+        {
+            Log(Debug::Warning) << "Skipping omwscripts file in content list: " << file;
+            continue;
+        }
         engine.addContentFile(file);
     }
 
-    StringsVector groundcover = variables["groundcover"].as<StringsVector>();
-    for (auto& file : groundcover)
-    {
-        engine.addGroundcoverFile(file);
-    }
+    Log(Debug::Warning) << "Skipping groundcover files.";
+    //StringsVector groundcover = variables["groundcover"].as<StringsVector>();
+    //for (auto& file : groundcover)
+    //{
+    //    engine.addGroundcoverFile(file);
+    //}
 
     if (variables.count("lua-scripts"))
     {
@@ -139,9 +164,7 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
 
     // startup-settings
     engine.setCell(variables["start"].as<std::string>());
-    engine.setSkipMenu(variables["skip-menu"].as<bool>(), variables["new-game"].as<bool>());
-    if (!variables["skip-menu"].as<bool>() && variables["new-game"].as<bool>())
-        Log(Debug::Warning) << "Warning: new-game used without skip-menu -> ignoring it";
+    engine.setSkipMenu(true, false);
 
     // scripts
     engine.setCompileAll(variables["script-all"].as<bool>());
@@ -153,10 +176,117 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
 
     // other settings
     Fallback::Map::init(variables["fallback"].as<Fallback::FallbackMap>().mMap);
-    engine.setSoundUsage(!variables["no-sound"].as<bool>());
+    engine.setSoundUsage(false);
     engine.setActivationDistanceOverride(variables["activate-dist"].as<int>());
     engine.enableFontExport(variables["export-fonts"].as<bool>());
     engine.setRandomSeed(variables["random-seed"].as<unsigned int>());
+
+    if (!variables["use-original-settings"].as<bool>())
+    {
+        Settings::gui().mScalingFactor.set(1);
+        Settings::video().mResolutionX.set(640);
+        Settings::video().mResolutionY.set(480);
+        Settings::video().mWindowMode.set(static_cast<Settings::WindowMode>(2));
+        Settings::video().mWindowBorder.set(true);
+        Settings::postProcessing().mEnabled.set(false);
+        Settings::groundcover().mEnabled.set(false);
+        Settings::terrain().mDistantTerrain.set(false);
+        Settings::input().mGrabCursor.set(false);
+
+        // Also set the local map size in Settings for easy access from localmap.cpp
+        Settings::map().mLocalMapResolution.set(variables["local-map-size"].as<int>());
+    }
+
+    std::string worldMapOutput = variables["world-map-output"].as<std::string>();
+    std::string localMapOutput = variables["local-map-output"].as<std::string>();
+
+    auto removeQuotes = [](std::string& str) {
+        if (str.size() >= 2 && ((str.front() == '"' && str.back() == '"') || (str.front() == '\'' && str.back() == '\'')))
+        {
+            str = str.substr(1, str.size() - 2);
+        }
+    };
+
+    removeQuotes(worldMapOutput);
+    removeQuotes(localMapOutput);
+
+    if (worldMapOutput.empty())
+        worldMapOutput = Files::pathToUnicodeString(std::filesystem::current_path() / "textures" / "advanced_world_map" / "custom");
+
+    if (localMapOutput.empty())
+        localMapOutput = Files::pathToUnicodeString(std::filesystem::current_path() / "textures" / "advanced_world_map" / "local");
+
+    engine.setWorldMapOutput(worldMapOutput);
+    engine.setLocalMapOutput(localMapOutput);
+    engine.setOverwriteMaps(variables["overwrite-maps"].as<bool>());
+    engine.setKeepTempData(variables["keep-temp-data"].as<bool>());
+    engine.setTilemapDownscaleFactor(variables["tilemap-downscale-factor"].as<int>());
+    int localMapSize = variables["local-map-size"].as<int>();
+    engine.setLocalMapSize(localMapSize);
+
+    if (variables.count("clear-output-dirs") && variables["clear-output-dirs"].as<bool>())
+    {
+        auto clearDir = [](const std::string& dirPath) {
+            std::filesystem::path dir(dirPath);
+            if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+                return;
+
+            for (const auto& entry : std::filesystem::directory_iterator(dir))
+            {
+                if (entry.is_regular_file())
+                {
+                    std::string ext = entry.path().extension().string();
+                    if (ext == ".yaml" || ext == ".png" || ext == ".heights")
+                    {
+                        std::filesystem::remove(entry.path());
+                    }
+                }
+            }
+        };
+
+        clearDir(worldMapOutput);
+        std::filesystem::path tilemapDir = std::filesystem::path(worldMapOutput) / "tilemap";
+        clearDir(tilemapDir.string());
+        clearDir(localMapOutput);
+    }
+
+    // Store launch parameters for Lua access
+    std::map<std::string, std::string> launchParams;
+    for (const auto& variable : variables)
+    {
+        const std::string& key = variable.first;
+        const auto& value = variable.second.value();
+        
+        if (value.type() == typeid(std::string))
+            launchParams[key] = boost::any_cast<std::string>(value);
+        else if (value.type() == typeid(int))
+            launchParams[key] = std::to_string(boost::any_cast<int>(value));
+        else if (value.type() == typeid(unsigned int))
+            launchParams[key] = std::to_string(boost::any_cast<unsigned int>(value));
+        else if (value.type() == typeid(bool))
+            launchParams[key] = boost::any_cast<bool>(value) ? "true" : "false";
+        else if (value.type() == typeid(float))
+            launchParams[key] = std::to_string(boost::any_cast<float>(value));
+        else if (value.type() == typeid(double))
+            launchParams[key] = std::to_string(boost::any_cast<double>(value));
+        else if (value.type() == typeid(Files::MaybeQuotedPath))
+            launchParams[key] = Files::pathToUnicodeString(boost::any_cast<Files::MaybeQuotedPath>(value));
+        else if (value.type() == typeid(StringsVector))
+        {
+            const auto& vec = boost::any_cast<StringsVector>(value);
+            if (!vec.empty())
+                launchParams[key] = vec.back(); // Use last value for multi-value parameters
+        }
+        else if (value.type() == typeid(Files::MaybeQuotedPathContainer))
+        {
+            const auto& container = boost::any_cast<Files::MaybeQuotedPathContainer>(value);
+            if (!container.empty())
+                launchParams[key] = Files::pathToUnicodeString(container.back());
+        }
+        else if (!variable.second.empty())
+            launchParams[key] = ""; // Parameter exists but has no convertible value
+    }
+    engine.setLaunchParameters(launchParams);
 
     return true;
 }
@@ -165,12 +295,27 @@ namespace
 {
     class OSGLogHandler : public osg::NotifyHandler
     {
+        int ignoreNext = 0;
+
         void notify(osg::NotifySeverity severity, const char* msg) override
         {
+            if (ignoreNext > 0)
+            {
+                --ignoreNext;
+                return;
+            }
+
             // Copy, because osg logging is not thread safe.
             std::string msgCopy(msg);
             if (msgCopy.empty())
                 return;
+
+            // Ignore because I don't know how to fix it
+            if (msgCopy.find("CullVisitor::apply(Geode&) detected NaN") != std::string::npos)
+            {
+                ignoreNext = 8;
+                return;
+            }
 
             Debug::Level level;
             switch (severity)

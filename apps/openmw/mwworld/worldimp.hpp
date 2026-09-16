@@ -12,6 +12,8 @@
 
 #include "../mwbase/world.hpp"
 
+#include "../mapextractor.hpp"
+
 #include "contentloader.hpp"
 #include "esmstore.hpp"
 #include "globals.hpp"
@@ -102,23 +104,30 @@ namespace MWWorld
         std::unique_ptr<MWPhysics::PhysicsSystem> mPhysics;
         std::unique_ptr<DetourNavigator::Navigator> mNavigator;
         std::unique_ptr<MWRender::RenderingManager> mRendering;
-        std::unique_ptr<MWWorld::Scene> mWorldScene;
-        std::unique_ptr<MWWorld::WeatherManager> mWeatherManager;
-        std::unique_ptr<MWWorld::DateTimeManager> mTimeManager;
-        std::unique_ptr<ProjectileManager> mProjectileManager;
+    std::unique_ptr<MWWorld::Scene> mWorldScene;
+    std::unique_ptr<MWWorld::WeatherManager> mWeatherManager;
+    std::unique_ptr<MWWorld::DateTimeManager> mTimeManager;
+    std::unique_ptr<ProjectileManager> mProjectileManager;
+    std::unique_ptr<OMW::MapExtractor> mMapExtractor;
 
         bool mSky;
         bool mGodMode;
         bool mScriptsEnabled;
         bool mDiscardMovements;
         std::vector<std::string> mContentFiles;
+        std::vector<std::string> mOriginalContentFiles; // Includes .omwscripts files before filtering
 
         std::filesystem::path mUserDataPath;
 
         int mActivationDistanceOverride;
 
         std::string mStartCell;
-
+        std::string mWorldMapOutputPath;
+        std::string mLocalMapOutputPath;
+        int mTilemapDownscaleFactor;
+        int mLocalMapSize;
+        bool mKeepTempData;
+        std::map<std::string, std::filesystem::path> mContentFileDirs;
         float mSwimHeightScale;
 
         float mDistanceToFocusObject;
@@ -194,7 +203,7 @@ namespace MWWorld
         void removeContainerScripts(const Ptr& reference) override;
 
         World(Resource::ResourceSystem* resourceSystem, int activationDistanceOverride, const std::string& startCell,
-            const std::filesystem::path& userDataPath);
+            const std::filesystem::path& userDataPath, const std::string& worldMapOutputPath, const std::string& localMapOutputPath, bool overwriteMaps, bool keepTempData, int tilemapDownscaleFactor, int localMapSize = 256, const std::map<std::string, std::filesystem::path>& contentFileDirs = {});
 
         void loadData(const Files::Collections& fileCollections, const std::vector<std::string>& contentFiles,
             const std::vector<std::string>& groundcoverFiles, ToUTF8::Utf8Encoder* encoder,
@@ -676,6 +685,27 @@ namespace MWWorld
         DateTimeManager* getTimeManager() override { return mTimeManager.get(); }
 
         void setActorActive(const MWWorld::Ptr& ptr, bool value) override;
+
+        std::string getWorldMapOutputPath() const override { return mWorldMapOutputPath; }
+        std::string getLocalMapOutputPath() const override { return mLocalMapOutputPath; }
+        bool getOverwriteMaps() const override;
+
+        void extractWorldMap(int cellSize = 32, int borderWidth = 0, bool waterAlphaMode = true) override;
+        void extractLocalMaps(bool playerCellOnly = false) override;
+        bool isMapExtractionActive() const override;
+
+        void saveToLocalMapDir(std::string_view filename, std::string_view stringData) override;
+        void generateTileWorldMap(const osg::Vec3f& backgroundColor, bool waterAlphaMode = true) override;
+        
+        void setWorldMapOutputPath(const std::string& path) override { mWorldMapOutputPath = path; }
+        void setLocalMapOutputPath(const std::string& path) override { mLocalMapOutputPath = path; }
+        
+        const std::map<std::string, std::string>& getLaunchParameters() const override;
+        
+        std::string getContentFileDir(const std::string& contentFile) const override;
+
+    private:
+        bool mGeneratingTileWorldMap = false;
     };
 }
 

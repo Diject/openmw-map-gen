@@ -168,15 +168,6 @@ Launcher::DataFilesPage::DataFilesPage(const Files::ConfigurationManager& cfg, C
     const QString encoding = mGameSettings.value("encoding", { "win1252" }).value;
     mSelector->setEncoding(encoding);
 
-    QVector<std::pair<QString, QString>> languages = { { "English", tr("English") }, { "French", tr("French") },
-        { "German", tr("German") }, { "Italian", tr("Italian") }, { "Polish", tr("Polish") },
-        { "Russian", tr("Russian") }, { "Spanish", tr("Spanish") } };
-
-    for (auto lang : languages)
-    {
-        mSelector->languageBox()->addItem(lang.second, lang.first);
-    }
-
     mNewProfileDialog = new TextInputDialog(tr("New Content List"), tr("Content List name:"), this);
     mCloneProfileDialog = new TextInputDialog(tr("Clone Content List"), tr("Content List name:"), this);
 
@@ -344,18 +335,6 @@ bool Launcher::DataFilesPage::loadSettings()
     // Hack: also add the current profile
     if (!currentProfile.isEmpty())
         addProfile(currentProfile, true);
-
-    auto language = mLauncherSettings.getLanguage();
-
-    for (int i = 0; i < mSelector->languageBox()->count(); ++i)
-    {
-        QString languageItem = mSelector->languageBox()->itemData(i).toString();
-        if (language == languageItem)
-        {
-            mSelector->languageBox()->setCurrentIndex(i);
-            break;
-        }
-    }
 
     return true;
 }
@@ -547,23 +526,6 @@ void Launcher::DataFilesPage::saveSettings(const QString& profile)
     }
     mLauncherSettings.setContentList(profileName, dirNames, archiveNames, fileNames);
     mGameSettings.setContentList(dirList, selectedArchivePaths(), fileNames);
-
-    QString language(mSelector->languageBox()->currentData().toString());
-
-    mLauncherSettings.setLanguage(language);
-
-    if (language == QLatin1String("Polish"))
-    {
-        mGameSettings.setValue(QLatin1String("encoding"), { "win1250" });
-    }
-    else if (language == QLatin1String("Russian"))
-    {
-        mGameSettings.setValue(QLatin1String("encoding"), { "win1251" });
-    }
-    else
-    {
-        mGameSettings.setValue(QLatin1String("encoding"), { "win1252" });
-    }
 }
 
 QList<Config::SettingValue> Launcher::DataFilesPage::selectedDirectoriesPaths() const
