@@ -109,6 +109,11 @@ namespace DetourNavigator
         // Force disable navmesh generation worker threads regardless of config file settings
         result.mAsyncNavMeshUpdaterThreads = 0;
 
+        if (result.mMaxTilesNumber < ::Settings::navigator().mMaxTilesNumber.get())
+            Log(Debug::Warning)
+                << "Navigator max tiles number is adjusted due to limitation on number of bits for tile identifier: "
+                << result.mMaxTilesNumber;
+
         return result;
     }
 }

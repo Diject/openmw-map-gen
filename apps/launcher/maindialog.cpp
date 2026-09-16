@@ -539,5 +539,5 @@ void Launcher::MainDialog::play()
 
 void Launcher::MainDialog::help()
 {
-    Misc::HelpViewer::openHelp("reference/index.html");
+    Misc::HelpViewer::openHelp({});
 }
