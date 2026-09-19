@@ -401,7 +401,7 @@ namespace OMW
             {
                 mInteriorWaterOption = 2;
             }
-            mInteriorWaterOption = std::clamp(mInteriorWaterOption, 0, 2);
+            mInteriorWaterOption = std::clamp(mInteriorWaterOption, 0, 3);
         }
 
         // Configure water culling on the LocalMap for interior maps (option 1).
@@ -942,6 +942,165 @@ namespace OMW
                             p[0] = static_cast<unsigned char>(p[0] * factor);
                             p[1] = static_cast<unsigned char>(p[1] * factor);
                             p[2] = static_cast<unsigned char>(p[2] * factor);
+                        }
+                    }
+                }
+            }
+        }
+        // Raycast the cell and blacken areas without solid geometry (option 3).
+        // A vertical ray is cast downward for each sample. Where it misses, the
+        // texture fades to black with a smooth falloff over two step sizes, so the
+        // transition has no hard square edges.
+        else if (mInteriorWaterOption == 3 && hasWater)
+        {
+            const MWPhysics::RayCastingInterface* rayCasting
+                = MWBase::Environment::get().getWorld()->getRayCasting();
+            if (rayCasting)
+            {
+                const osg::BoundingBox& bounds = mLocalMap->getInteriorBounds();
+                const osg::Vec2f& center = mLocalMap->getInteriorCenter();
+                const float angle = mLocalMap->getInteriorAngle();
+                const float mapWorldSize = mLocalMap->getEffectiveMapWorldSize();
+
+                if (mapWorldSize > 0.f)
+                {
+                    const float pixelsPerUnit = static_cast<float>(mLocalMapSize) / mapWorldSize;
+
+                    // Use the same ray step as exterior maps (128 game units).
+                    constexpr float rayStep
+                        = static_cast<float>(Constants::CellSizeInUnits) / 128.f;
+                    constexpr float rayTop = 20000.0f;
+                    constexpr float rayBottom = -10000.0f;
+                    const int mask = MWPhysics::CollisionType_World | MWPhysics::CollisionType_HeightMap
+                        | MWPhysics::CollisionType_Door;
+
+                    const float minX = bounds.xMin();
+                    const float minY = bounds.yMin();
+                    const float widthUnits = bounds.xMax() - bounds.xMin();
+                    const float heightUnits = bounds.yMax() - bounds.yMin();
+
+                    const int gridW = std::max(1, static_cast<int>(std::ceil(widthUnits / rayStep)));
+                    const int gridH = std::max(1, static_cast<int>(std::ceil(heightUnits / rayStep)));
+
+                    // Size in pixels covered by a single ray sample.
+                    const float blockPx = rayStep * pixelsPerUnit;
+
+                    // Inverse of the render rotation: rotated frame -> world frame.
+                    const float ca = std::cos(angle);
+                    const float sa = std::sin(angle);
+                    auto toWorld = [&](float rx, float ry) -> osg::Vec2f {
+                        const float dx = rx - center.x();
+                        const float dy = ry - center.y();
+                        return osg::Vec2f(ca * dx + sa * dy + center.x(), -sa * dx + ca * dy + center.y());
+                    };
+
+                    // 1) Cast rays, building a per-sample hit mask.
+                    std::vector<bool> hit(static_cast<size_t>(gridW) * gridH, false);
+                    for (int gy = 0; gy < gridH; ++gy)
+                    {
+                        for (int gx = 0; gx < gridW; ++gx)
+                        {
+                            const float rx = minX + (gx + 0.5f) * rayStep;
+                            const float ry = minY + (gy + 0.5f) * rayStep;
+                            const osg::Vec2f world = toWorld(rx, ry);
+                            hit[gy * gridW + gx] = rayCasting
+                                ->castRay(osg::Vec3f(world.x(), world.y(), rayTop),
+                                    osg::Vec3f(world.x(), world.y(), rayBottom), mask)
+                                .mHit;
+                        }
+                    }
+
+                    // 2) Chamfer distance transform: distance (in grid cells) from each
+                    // sample to the nearest "hit" sample.
+                    const float inf = std::numeric_limits<float>::infinity();
+                    constexpr float diag = 1.41421356f;
+                    std::vector<float> dist(static_cast<size_t>(gridW) * gridH, inf);
+                    for (int i = 0; i < gridW * gridH; ++i)
+                        if (hit[i])
+                            dist[i] = 0.f;
+
+                    // Forward pass
+                    for (int gy = 0; gy < gridH; ++gy)
+                    {
+                        for (int gx = 0; gx < gridW; ++gx)
+                        {
+                            const int i = gy * gridW + gx;
+                            if (hit[i])
+                                continue;
+                            float d = dist[i];
+                            if (gy > 0)
+                            {
+                                d = std::min(d, dist[i - gridW] + 1.f);
+                                if (gx > 0)
+                                    d = std::min(d, dist[i - gridW - 1] + diag);
+                                if (gx < gridW - 1)
+                                    d = std::min(d, dist[i - gridW + 1] + diag);
+                            }
+                            if (gx > 0)
+                                d = std::min(d, dist[i - 1] + 1.f);
+                            dist[i] = d;
+                        }
+                    }
+                    // Backward pass
+                    for (int gy = gridH - 1; gy >= 0; --gy)
+                    {
+                        for (int gx = gridW - 1; gx >= 0; --gx)
+                        {
+                            const int i = gy * gridW + gx;
+                            if (hit[i])
+                                continue;
+                            float d = dist[i];
+                            if (gy < gridH - 1)
+                            {
+                                d = std::min(d, dist[i + gridW] + 1.f);
+                                if (gx > 0)
+                                    d = std::min(d, dist[i + gridW - 1] + diag);
+                                if (gx < gridW - 1)
+                                    d = std::min(d, dist[i + gridW + 1] + diag);
+                            }
+                            if (gx < gridW - 1)
+                                d = std::min(d, dist[i + 1] + 1.f);
+                            dist[i] = d;
+                        }
+                    }
+
+                    // 3) Convert distance to a per-sample fade factor: 1 for hits,
+                    // fading to 0 over two step sizes beyond the nearest hit.
+                    constexpr float fadeCells = 4.f;
+                    std::vector<float> factor(static_cast<size_t>(gridW) * gridH, 0.f);
+                    for (int i = 0; i < gridW * gridH; ++i)
+                        factor[i] = hit[i] ? 1.f : std::clamp(1.f - dist[i] / fadeCells, 0.f, 1.f);
+
+                    // 4) Bilinearly sample the factor field per pixel and apply it,
+                    // avoiding blocky squares and hard boundaries.
+                    for (int py = 0; py < totalHeight; ++py)
+                    {
+                        float v = static_cast<float>(py) / blockPx - 0.5f;
+                        v = std::clamp(v, 0.f, static_cast<float>(gridH) - 1.f);
+                        const int j0 = static_cast<int>(std::floor(v));
+                        const int j1 = std::min(j0 + 1, gridH - 1);
+                        const float fv = v - static_cast<float>(j0);
+
+                        for (int px = 0; px < totalWidth; ++px)
+                        {
+                            float u = static_cast<float>(px) / blockPx - 0.5f;
+                            u = std::clamp(u, 0.f, static_cast<float>(gridW) - 1.f);
+                            const int i0 = static_cast<int>(std::floor(u));
+                            const int i1 = std::min(i0 + 1, gridW - 1);
+                            const float fu = u - static_cast<float>(i0);
+
+                            const float f00 = factor[j0 * gridW + i0];
+                            const float f10 = factor[j0 * gridW + i1];
+                            const float f01 = factor[j1 * gridW + i0];
+                            const float f11 = factor[j1 * gridW + i1];
+
+                            const float f
+                                = (f00 * (1.f - fu) + f10 * fu) * (1.f - fv) + (f01 * (1.f - fu) + f11 * fu) * fv;
+
+                            unsigned char* p = data + ((py * totalWidth + px) * 3);
+                            p[0] = static_cast<unsigned char>(p[0] * f);
+                            p[1] = static_cast<unsigned char>(p[1] * f);
+                            p[2] = static_cast<unsigned char>(p[2] * f);
                         }
                     }
                 }

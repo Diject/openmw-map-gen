@@ -132,7 +132,8 @@ namespace OpenMW
             "controls how water is handled on extracted interior maps:\n"
             "\t0 - no processing\n"
             "\t1 - remove water from the map entirely\n"
-            "\t2 - fade the empty borders to black (default)");
+            "\t2 - fade the empty borders to black (default)\n"
+            "\t3 - raycast the cell and black out areas without solid geometry");
 
         addOption("use-original-settings", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "use original settings for resolution, window mode, etc.");
