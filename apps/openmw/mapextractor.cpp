@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -48,6 +49,7 @@ namespace OMW
         , mLocalMap(nullptr)
         , mLocalMapSize(localMapSize)
         , mFitLocalMaps(false)
+        , mInteriorWaterOption(2)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
@@ -385,6 +387,26 @@ namespace OMW
 
         // Create output directory if it doesn't exist
         std::filesystem::create_directories(mLocalMapOutputDir);
+
+        // Read the interior-water-option launch parameter (default 2).
+        const auto& launchParams = MWBase::Environment::get().getLaunchParameters();
+        auto it = launchParams.find("interior-water-option");
+        if (it != launchParams.end() && !it->second.empty())
+        {
+            try
+            {
+                mInteriorWaterOption = std::stoi(it->second);
+            }
+            catch (const std::exception&)
+            {
+                mInteriorWaterOption = 2;
+            }
+            mInteriorWaterOption = std::clamp(mInteriorWaterOption, 0, 2);
+        }
+
+        // Configure water culling on the LocalMap for interior maps (option 1).
+        if (mLocalMap)
+            mLocalMap->setInteriorWaterCulling(mInteriorWaterOption == 1);
 
         if (!mLocalMap)
         {
@@ -758,11 +780,12 @@ namespace OMW
 
         Log(Debug::Info) << "Saving interior cell: " << cellName;
 
-        saveInteriorCellTextures(cellId, cellName);
+        const bool hasWater = cellStore->getCell()->hasWater();
+        saveInteriorCellTextures(cellId, cellName, hasWater);
         return true;
     }
 
-    void MapExtractor::saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName)
+    void MapExtractor::saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName, bool hasWater)
     {
         MyGUI::IntRect grid = mLocalMap->getInteriorGrid();
         
@@ -863,6 +886,62 @@ namespace OMW
                             destPixel[0] = srcPixel[0];
                             destPixel[1] = srcPixel[1];
                             destPixel[2] = srcPixel[2];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fade the empty border of water-filled interiors to black (option 2).
+        // Interior maps have a 500 game-unit border around the content. Water can
+        // render into this border, so we smoothly fade it out starting at the content
+        // edge (500 units) down to a reserved 50 units from the texture edge.
+        if (mInteriorWaterOption == 2 && hasWater)
+        {
+            const float mapWorldSize = mLocalMap->getEffectiveMapWorldSize();
+            if (mapWorldSize > 0.f)
+            {
+                const float pixelsPerUnit = static_cast<float>(mLocalMapSize) / mapWorldSize;
+                const float fadeStartPx = 500.0f * pixelsPerUnit; // distance from edge where fade begins
+                const float fadeEndPx = 50.0f * pixelsPerUnit;    // distance from edge where fully black
+                const float fadeRange = fadeStartPx - fadeEndPx;
+
+                if (fadeRange > 0.f)
+                {
+                    // Use a rounded-rectangle distance field so that the fade follows a smooth
+                    // rounded contour around the corners (avoiding the diagonal "beam" produced
+                    // by a clamped axis-aligned distance).
+                    const float halfW = static_cast<float>(totalWidth) * 0.5f;
+                    const float halfH = static_cast<float>(totalHeight) * 0.5f;
+                    const float cornerRadius = std::min(fadeStartPx, std::min(halfW, halfH));
+
+                    for (int y = 0; y < totalHeight; ++y)
+                    {
+                        const float py = static_cast<float>(y) + 0.5f - halfH;
+                        for (int x = 0; x < totalWidth; ++x)
+                        {
+                            const float px = static_cast<float>(x) + 0.5f - halfW;
+
+                            // Rounded-box signed distance; negated to yield distance from the edge.
+                            const float qx = std::abs(px) - (halfW - cornerRadius);
+                            const float qy = std::abs(py) - (halfH - cornerRadius);
+                            const float qx0 = std::max(qx, 0.0f);
+                            const float qy0 = std::max(qy, 0.0f);
+                            const float distPx = cornerRadius
+                                - (std::sqrt(qx0 * qx0 + qy0 * qy0) + std::min(std::max(qx, qy), 0.0f));
+
+                            float factor;
+                            if (distPx <= fadeEndPx)
+                                factor = 0.0f;
+                            else if (distPx >= fadeStartPx)
+                                factor = 1.0f;
+                            else
+                                factor = (distPx - fadeEndPx) / fadeRange;
+
+                            unsigned char* p = data + ((y * totalWidth + x) * 3);
+                            p[0] = static_cast<unsigned char>(p[0] * factor);
+                            p[1] = static_cast<unsigned char>(p[1] * factor);
+                            p[2] = static_cast<unsigned char>(p[2] * factor);
                         }
                     }
                 }

@@ -86,6 +86,7 @@ namespace OMW
         int mFramesToWait;
         int mLocalMapSize;
         bool mFitLocalMaps;
+        int mInteriorWaterOption;
 
         void saveWorldMapTexture();
         void saveWorldMapTextureBlocks(bool waterAlphaMode);
@@ -98,7 +99,7 @@ namespace OMW
         bool extractExteriorCell(const MWWorld::CellStore* cellStore, bool forceOverwrite);
         bool extractInteriorCell(const MWWorld::CellStore* cellStore, bool forceOverwrite);
         void saveExteriorCellHeights(const MWWorld::CellStore* cellStore);
-        void saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName);
+        void saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName, bool hasWater);
         void saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId, 
                                  int segmentsX, int segmentsY);
     };

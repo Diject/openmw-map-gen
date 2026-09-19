@@ -65,6 +65,7 @@ namespace MWRender
         osg::Matrix mProjectionMatrix;
         osg::Matrix mViewMatrix;
         bool mActive;
+        bool mCullWater = false;
     };
 
     class CameraLocalUpdateCallback
@@ -178,6 +179,7 @@ namespace MWRender
         float customMapWorldSize)
     {
         auto rttNode = new LocalMapRenderToTexture(mSceneRoot, mMapResolution, customMapWorldSize, left, top, upVector, zmin, zmax);
+        rttNode->mCullWater = mInterior && mWaterCulling;
         mLocalMapRTTs.emplace_back(rttNode);
 
         mRoot->addChild(mLocalMapRTTs.back());
@@ -871,9 +873,12 @@ namespace MWRender
         camera->setRenderOrder(osg::Camera::PRE_RENDER);
 
         // Add Mask_Water to fix missing water in some exterior local maps
-        camera->setCullMask(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
-        camera->setCullMaskLeft(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
-        camera->setCullMaskRight(Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static);
+        unsigned int cullMask = Mask_Scene | Mask_Water | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static;
+        if (mCullWater)
+            cullMask &= ~(Mask_Water | Mask_SimpleWater);
+        camera->setCullMask(cullMask);
+        camera->setCullMaskLeft(cullMask);
+        camera->setCullMaskRight(cullMask);
         camera->setNodeMask(Mask_RenderToTexture);
         camera->setProjectionMatrix(mProjectionMatrix);
         camera->setViewMatrix(mViewMatrix);
