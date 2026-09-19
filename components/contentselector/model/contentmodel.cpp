@@ -675,7 +675,10 @@ void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileL
     for (qsizetype i = 0, n = fileList.size(); i < n; ++i)
     {
         const EsmFile* file = item(fileList[i]);
-        if (setCheckState(file, true))
+        if (!file)
+            continue;
+
+        if (orderOnly || setCheckState(file, true))
         {
             // setCheckState already gracefully handles builtIn and fromAnotherConfigFile
             // as necessary, move plug-ins in visible list to match sequence of supplied filelist
