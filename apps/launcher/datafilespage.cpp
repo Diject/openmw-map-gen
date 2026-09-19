@@ -485,7 +485,8 @@ void Launcher::DataFilesPage::populateFileViews(const QString& contentModelName)
             nonUserContent.push_back(content.value);
     }
     mSelector->setNonUserContent(nonUserContent);
-    mSelector->setProfileContent(mLauncherSettings.getContentListFiles(contentModelName));
+    mSelector->setProfileContent(mLauncherSettings.getContentListFiles(contentModelName),
+        mLauncherSettings.getUserFilesInOrder(contentModelName));
 }
 
 void Launcher::DataFilesPage::saveSettings(const QString& profile)
@@ -524,7 +525,7 @@ void Launcher::DataFilesPage::saveSettings(const QString& profile)
         if (mGameSettings.isUserSetting(archive))
             archiveNames.push_back(archive.originalRepresentation);
     }
-    mLauncherSettings.setContentList(profileName, dirNames, archiveNames, fileNames);
+    mLauncherSettings.setContentList(profileName, dirNames, archiveNames, fileNames, mSelector->userFilesInOrder());
     mGameSettings.setContentList(dirList, selectedArchivePaths(), fileNames);
 }
 
@@ -714,7 +715,8 @@ void Launcher::DataFilesPage::on_cloneProfileAction_triggered()
         if (mGameSettings.isUserSetting(archive))
             archiveNames.push_back(archive.originalRepresentation);
     }
-    mLauncherSettings.setContentList(profile, dirNames, archiveNames, selectedFilePaths());
+    mLauncherSettings.setContentList(
+        profile, dirNames, archiveNames, selectedFilePaths(), mSelector->userFilesInOrder());
     addProfile(profile, true);
 }
 
