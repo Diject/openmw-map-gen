@@ -1119,11 +1119,11 @@ namespace OMW
             return;
         }
 
-        saveInteriorMapInfo(cellId, lowerCaseId, segmentsX, segmentsY);
+        saveInteriorMapInfo(cellId, lowerCaseId, segmentsX, segmentsY, hasWater);
     }
 
     void MapExtractor::saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId,
-                                           int segmentsX, int segmentsY)
+                                           int segmentsX, int segmentsY, bool hasWater)
     {
         // Get the bounds, center and angle that LocalMap actually used for rendering
         const osg::BoundingBox& bounds = mLocalMap->getInteriorBounds();
@@ -1172,6 +1172,8 @@ namespace OMW
         file << "hT: " << segmentsY << "\n";
         file << "tSc: " << tSc << "\n";
         file << "tS: " << mLocalMapSize << "\n";
+        if (hasWater)
+            file << "hWt: " << "true" << "\n";
         file << "mBnds:\n";
         file << "  min: [" << bounds.xMin() + padding << ", " << bounds.yMin() + padding << ", " << bounds.zMin() << "]\n";
         file << "  max: [" << bounds.xMax() - padding << ", " << bounds.yMax() - padding << ", " << bounds.zMax() << "]\n";

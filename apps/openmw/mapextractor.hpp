@@ -101,7 +101,7 @@ namespace OMW
         void saveExteriorCellHeights(const MWWorld::CellStore* cellStore);
         void saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName, bool hasWater);
         void saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId, 
-                                 int segmentsX, int segmentsY);
+                                 int segmentsX, int segmentsY, bool hasWater);
     };
 }
 
