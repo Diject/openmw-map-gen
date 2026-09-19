@@ -49,7 +49,7 @@ namespace OMW
         , mLocalMap(nullptr)
         , mLocalMapSize(localMapSize)
         , mFitLocalMaps(false)
-        , mInteriorWaterOption(2)
+        , mInteriorWaterOption(3)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
