@@ -7,3 +7,5 @@ MENU: scripts/omw/console/menu.lua
 PLAYER: scripts/omw/console/player.lua
 GLOBAL: scripts/omw/console/global.lua
 CUSTOM: scripts/omw/console/local.lua
+
+LOAD: scripts/omw/esmfallbacks.lua
