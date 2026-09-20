@@ -228,6 +228,7 @@ namespace MWGui
             mMagicSelectionDialog = std::make_unique<MagicSelectionDialog>(this);
         }
         mMagicSelectionDialog->setVisible(true);
+        mMagicSelectionDialog->setActiveControllerWindow(true);
 
         mAssignDialog->setVisible(false);
     }
@@ -322,11 +323,8 @@ namespace MWGui
         const ESM::MagicEffect* effect
             = esmStore.get<ESM::MagicEffect>().find(spell->mEffects.mList.front().mData.mEffectID);
 
-        std::string path = effect->mIcon;
-        std::replace(path.begin(), path.end(), '/', '\\');
-        path.insert(path.rfind('\\') + 1, "b_");
-        const VFS::Path::Normalized iconPath = Misc::ResourceHelpers::correctIconPath(
-            VFS::Path::toNormalized(path), *MWBase::Environment::get().getResourceSystem()->getVFS());
+        const VFS::Path::Normalized iconPath = Misc::ResourceHelpers::correctBigIconPath(
+            VFS::Path::toNormalized(effect->mIcon), *MWBase::Environment::get().getResourceSystem()->getVFS());
 
         float scale = 1.f;
         MyGUI::ITexture* texture
@@ -724,7 +722,6 @@ namespace MWGui
         WindowModal::onOpen();
 
         mMagicList->setModel(new SpellModel(MWMechanics::getPlayer()));
-        mMagicList->resetScrollbars();
     }
 
     void MagicSelectionDialog::onModelIndexSelected(SpellModel::ModelIndex index)
@@ -744,5 +741,14 @@ namespace MWGui
             mMagicList->onControllerButton(arg.button);
 
         return true;
+    }
+
+    void MagicSelectionDialog::setActiveControllerWindow(bool active)
+    {
+        if (!Settings::gui().mControllerMenus)
+            return;
+
+        mMagicList->setActiveControllerWindow(active);
+        WindowBase::setActiveControllerWindow(active);
     }
 }

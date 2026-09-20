@@ -107,6 +107,15 @@ target_link_libraries(components-tests
     components
 )
 
+if (USE_QT)
+    target_sources(components-tests PRIVATE config/testlaunchersettings.cpp)
+    target_link_libraries(components-tests components_qt)
+endif()
+
+if (WIN32)
+    target_sources(components-tests PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
+endif()
+
 # Fix for not visible pthreads functions for linker with glibc 2.15
 if (UNIX AND NOT APPLE)
     target_link_libraries(components-tests ${CMAKE_THREAD_LIBS_INIT})

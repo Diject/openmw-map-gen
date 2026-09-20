@@ -652,7 +652,20 @@ bool ContentSelectorModel::ContentModel::isLoadOrderError(const EsmFile* file) c
     return !errors.empty();
 }
 
-void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileList)
+QStringList ContentSelectorModel::ContentModel::userFilesInOrder() const
+{
+    QStringList result;
+    result.reserve(mFiles.size());
+    for (const EsmFile* file : mFiles)
+    {
+        if (file->builtIn() || file->fromAnotherConfigFile())
+            continue;
+        result.append(file->fileName());
+    }
+    return result;
+}
+
+void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileList, bool orderOnly)
 {
     QProgressDialog progressDialog("Setting content list", {}, 0, static_cast<int>(fileList.size()));
     progressDialog.setWindowModality(Qt::WindowModal);
@@ -662,7 +675,10 @@ void ContentSelectorModel::ContentModel::setContentList(const QStringList& fileL
     for (qsizetype i = 0, n = fileList.size(); i < n; ++i)
     {
         const EsmFile* file = item(fileList[i]);
-        if (setCheckState(file, true))
+        if (!file)
+            continue;
+
+        if (orderOnly || setCheckState(file, true))
         {
             // setCheckState already gracefully handles builtIn and fromAnotherConfigFile
             // as necessary, move plug-ins in visible list to match sequence of supplied filelist

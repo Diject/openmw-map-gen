@@ -128,6 +128,15 @@ namespace OpenMW
         addOption("local-map-size", bpo::value<int>()->default_value(256),
             "size of local map images in pixels. Default: 256");
 
+        addOption("interior-alpha-option", bpo::value<int>()->default_value(2),
+            "controls alpha channel of extracted interior maps:\n"
+            "\t0 - no alpha channel (RGB only, no processing)\n"
+            "\t1 - fade the empty border of interiors to transparent\n"
+            "\t2 - raycast the cell and make areas without solid geometry transparent (default)");
+
+        addOption("interior-disable-water", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "disable water rendering on extracted interior maps");
+
         addOption("use-original-settings", bpo::value<bool>()->implicit_value(true)->default_value(false),
             "use original settings for resolution, window mode, etc.");
 

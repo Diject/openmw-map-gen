@@ -123,6 +123,12 @@ namespace MWRender
          * Get interior map bounds (with padding applied) - for map extraction
          */
         const osg::BoundingBox& getInteriorBounds() const { return mBounds; }
+
+        /**
+         * Enable/disable culling of water during interior map rendering.
+         * Used to fully remove water from extracted interior maps.
+         */
+        void setInteriorWaterCulling(bool enabled) { mWaterCulling = enabled; }
         
         /**
          * Get interior map center after rotation - for map extraction
@@ -217,6 +223,7 @@ namespace MWRender
         osg::Vec2f mCenter;
         bool mInterior;
         bool mExtractionMode = false;
+        bool mWaterCulling = false;
 
         std::uint8_t getExteriorNeighbourFlags(int cellX, int cellY) const;
     };

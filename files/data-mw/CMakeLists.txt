@@ -20,6 +20,8 @@ set(BUILTIN_DATA_MW_FILES
 
     # L10n for OpenMW menus and non-game-specific messages
     l10n/OMWEngine/gmst.yaml
+
+    scripts/omw/esmfallbacks.lua
 )
 
 foreach (f ${BUILTIN_DATA_MW_FILES})

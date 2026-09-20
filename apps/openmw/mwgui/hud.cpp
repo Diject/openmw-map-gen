@@ -19,6 +19,7 @@
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/esmstore.hpp"
+#include "../mwworld/worldmodel.hpp"
 
 #include "../mwmechanics/actorutil.hpp"
 #include "../mwmechanics/npcstats.hpp"
@@ -34,36 +35,7 @@ namespace MWGui
     HUD::HUD(CustomMarkerCollection& customMarkers, DragAndDrop* dragAndDrop, MWRender::LocalMap* localMapRender)
         : WindowBase("openmw_hud.layout")
         , LocalMapBase(customMarkers, localMapRender, Settings::map().mLocalMapHudFogOfWar)
-        , mHealth(nullptr)
-        , mMagicka(nullptr)
-        , mStamina(nullptr)
-        , mDrowning(nullptr)
-        , mWeapImage(nullptr)
-        , mSpellImage(nullptr)
-        , mWeapStatus(nullptr)
-        , mSpellStatus(nullptr)
-        , mEffectBox(nullptr)
-        , mMinimap(nullptr)
-        , mCrosshair(nullptr)
-        , mCellNameBox(nullptr)
-        , mDrowningBar(nullptr)
-        , mDrowningFlash(nullptr)
-        , mHealthManaStaminaBaseLeft(0)
-        , mWeapBoxBaseLeft(0)
-        , mSpellBoxBaseLeft(0)
-        , mMinimapBoxBaseRight(0)
-        , mEffectBoxBaseRight(0)
         , mDragAndDrop(dragAndDrop)
-        , mCellNameTimer(0.0f)
-        , mWeaponSpellTimer(0.f)
-        , mMapVisible(true)
-        , mWeaponVisible(true)
-        , mSpellVisible(true)
-        , mWorldMouseOver(false)
-        , mEnemyActorId(-1)
-        , mEnemyHealthTimer(-1)
-        , mIsDrowning(false)
-        , mDrowningFlashTheta(0.f)
     {
         // Energy bars
         getWidget(mHealthFrame, "HealthFrame");
@@ -338,7 +310,7 @@ namespace MWGui
 
         mSpellIcons->updateWidgets(mEffectBox, true);
 
-        if (mEnemyActorId != -1 && mEnemyHealth->getVisible())
+        if (mEnemyActor.isSet() && mEnemyHealth->getVisible())
         {
             updateEnemyHealthBar();
         }
@@ -382,12 +354,8 @@ namespace MWGui
             // use the icon of the first effect
             const ESM::MagicEffect* effect = MWBase::Environment::get().getESMStore()->get<ESM::MagicEffect>().find(
                 spell->mEffects.mList.front().mData.mEffectID);
-            std::string icon = effect->mIcon;
-            std::replace(icon.begin(), icon.end(), '/', '\\');
-            size_t slashPos = icon.rfind('\\');
-            icon.insert(slashPos + 1, "b_");
-            const VFS::Path::Normalized iconPath = Misc::ResourceHelpers::correctIconPath(
-                VFS::Path::toNormalized(icon), *MWBase::Environment::get().getResourceSystem()->getVFS());
+            const VFS::Path::Normalized iconPath = Misc::ResourceHelpers::correctBigIconPath(
+                VFS::Path::toNormalized(effect->mIcon), *MWBase::Environment::get().getResourceSystem()->getVFS());
             mSpellImage->setSpellIcon(iconPath);
         }
         else
@@ -579,7 +547,7 @@ namespace MWGui
 
     void HUD::updateEnemyHealthBar()
     {
-        MWWorld::Ptr enemy = MWBase::Environment::get().getWorld()->searchPtrViaActorId(mEnemyActorId);
+        MWWorld::Ptr enemy = MWBase::Environment::get().getWorldModel()->getPtr(mEnemyActor);
         if (enemy.isEmpty())
             return;
         MWMechanics::CreatureStats& stats = enemy.getClass().getCreatureStats(enemy);
@@ -599,7 +567,7 @@ namespace MWGui
 
     void HUD::setEnemy(const MWWorld::Ptr& enemy)
     {
-        mEnemyActorId = enemy.getClass().getCreatureStats(enemy).getActorId();
+        mEnemyActor = enemy.getCellRef().getRefNum();
         mEnemyHealthTimer = MWBase::Environment::get()
                                 .getESMStore()
                                 ->get<ESM::GameSetting>()
@@ -613,12 +581,12 @@ namespace MWGui
 
     void HUD::clear()
     {
-        mEnemyActorId = -1;
+        mEnemyActor = {};
         mEnemyHealthTimer = -1;
 
         mWeaponSpellTimer = 0.f;
-        mWeaponName = std::string();
-        mSpellName = std::string();
+        mWeaponName.clear();
+        mSpellName.clear();
         mWeaponSpellBox->setVisible(false);
 
         mWeapStatus->setProgressRange(100);

@@ -99,20 +99,13 @@ namespace Resource
         /// Re-create shaders for this node, need to call this if alpha testing, texture stages or vertex color mode
         /// have changed.
         void recreateShaders(osg::ref_ptr<osg::Node> node, const std::string& shaderPrefix = "objects",
-            bool forceShadersForNode = false, const osg::Program* programTemplate = nullptr);
+            const osg::Program* programTemplate = nullptr);
 
         /// Applying shaders to a node may replace some fixed-function state.
         /// This restores it.
         /// When editing such state, it should be reinstated before the edits, and shaders should be recreated
         /// afterwards.
         void reinstateRemovedState(osg::ref_ptr<osg::Node> node);
-
-        /// @see ShaderVisitor::setForceShaders
-        void setForceShaders(bool force);
-        bool getForceShaders() const;
-
-        void setClampLighting(bool clamp);
-        bool getClampLighting() const;
 
         /// @see ShaderVisitor::setAutoUseNormalMaps
         void setAutoUseNormalMaps(bool use);
@@ -126,8 +119,6 @@ namespace Resource
         void setAutoUseSpecularMaps(bool use);
 
         void setSpecularMapPattern(const std::string& pattern);
-
-        void setApplyLightingToEnvMaps(bool apply);
 
         void setSupportedLightingMethods(const SceneUtil::LightManager::SupportedMethods& supported);
         bool isSupportedLightingMethod(SceneUtil::LightingMethod method) const;
@@ -261,11 +252,8 @@ namespace Resource
         unsigned int mParticleSystemMask;
         SceneUtil::LightingMethod mLightingMethod;
         SceneUtil::LightManager::SupportedMethods mSupportedLightingMethods;
-        bool mForceShaders = false;
-        bool mClampLighting = true;
         bool mAutoUseNormalMaps = false;
         bool mAutoUseSpecularMaps = false;
-        bool mApplyLightingToEnvMaps = false;
         bool mConvertAlphaTestToAlphaToCoverage = false;
         bool mAdjustCoverageForAlphaTest = false;
         bool mSupportsNormalsRT = false;

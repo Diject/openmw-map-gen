@@ -47,8 +47,10 @@ Command-line options (fork-specific)
 --world-map-border=2             The number of pixels to add as a border around terrain above water level in the world map texture. Default: 2.
 --world-map-disable-water-alpha  Disable water transparency for the world map texture.
 --local-map-size=256             Size of output local map images in pixels. Default: 256. Overrides 'local map resolution' setting from settings.cfg.
---use-original-settings          Use settings for resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
+--interior-alpha-option=2        Controls alpha channel of extracted interior maps: (0 - no alpha channel (RGB only, no processing); 1 - fade the empty border of interiors to transparent; 2 - raycast the cell and make areas without solid geometry transparent (default).)
+--interior-disable-water         Disable water rendering on extracted interior maps.
 --use-constant-scale             Use a constant scale for interior local map textures instead of scaling them to fit the unused texture space.
+--use-original-settings          Use settings for resolution, window mode and some graphics options from settings.cfg instead of forcing windowed mode with minimum resolution.
 --keep-temp-data                 Retain temporary data (height data for game cells) after generation completes. By default, this data is deleted to save disk space.
 ```
 

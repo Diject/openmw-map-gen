@@ -1,4 +1,4 @@
-name: RelWithDebInfo
+name: Build and test
 
 on:
 - workflow_dispatch
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Add OpenMW PPA Dependencies
       run: sudo add-apt-repository ppa:openmw/openmw; sudo apt-get update
@@ -34,7 +34,7 @@ jobs:
         -D BUILD_COMPONENTS_TESTS=ON
         -D BUILD_OPENMW_TESTS=ON
         -D BUILD_OPENCS_TESTS=ON
-        -D CMAKE_INSTALL_PREFIX=.
+        -D CMAKE_INSTALL_PREFIX=install
 
     - name: Build
       run: cmake --build . -- -j$(nproc)
@@ -48,84 +48,35 @@ jobs:
     - name: Run OpenMW-CS tests
       run: ./openmw-cs-tests
 
-    - name: Prepare portable package
-      shell: bash
-      run: |
-        mkdir -p openmw-linux
-        cp -r resources openmw-linux/
-        cp defaults.bin openmw-linux/
-        cp gamecontrollerdb.txt openmw-linux/
-        cp openmw.cfg openmw-linux/
-        cp openmw openmw-linux/
-        cp openmw-launcher openmw-linux/
-        cp openmw-cs openmw-linux/
-        cp openmw-wizard openmw-linux/
-        cp openmw-iniimporter openmw-linux/
-        cp openmw-essimporter openmw-linux/
-        cp bsatool openmw-linux/
-        cp esmtool openmw-linux/
-        cp openmw-navmeshtool openmw-linux/ || true
-        cp openmw-bulletobjecttool openmw-linux/ || true
-        cp README.md openmw-linux/
-        cp LICENSE openmw-linux/
-        cp AUTHORS.md openmw-linux/
-        cp CHANGELOG.md openmw-linux/
+    # - name: Install
+    #   shell: bash
+    #   run: cmake --install .
 
-    - name: Create Artifact
-      shell: bash
-      run: tar -czf openmw-linux-${{ github.sha }}.tar.gz openmw-linux
+    # - name: Create Artifact
+    #   shell: bash
+    #   working-directory: install
+    #   run: |
+    #     ls -laR
+    #     7z a ../build_artifact.7z .
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        path: ./openmw-linux-${{ github.sha }}.tar.gz
-        name: openmw-linux-build
+    # - name: Upload Artifact
+    #   uses: actions/upload-artifact@v1
+    #   with:
+    #     path: ./build_artifact.7z
+    #     name: build_artifact.7z
 
   MacOS:
-    runs-on: macos-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Building Dependencies
-      run: CI/before_install.macos.sh
-
-    - name: Prime ccache
-      uses: hendrikmuhs/ccache-action@v1
-      with:
-        key: ${{ matrix.os }}-${{ env.BUILD_TYPE }}
-        max-size: 1000M
-
-    - name: Configure
-      run: CI/before_script.macos.sh -C
-    
-    - name: Build
-      run: CI/macos/build.sh
-
-    - name: Package
-      working-directory: build
-      run: make -j $(sysctl -n hw.logicalcpu) package
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        path: build/*.dmg
-        name: openmw-macos-build
-
-  Output-Envs:
-    name: Read .env file and expose it as output
-    runs-on: ubuntu-latest
-    outputs:
-      VCPKG_DEPS_TAG: ${{ env.VCPKG_DEPS_TAG }}
-      BUILD_TYPE: ${{ env.BUILD_TYPE }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: cat "${{ github.workspace }}/CI/github.env" >> $GITHUB_ENV
+    strategy:
+      fail-fast: true
+      matrix:
+        args:
+          - image: macos-15
+          - image: macos-15-intel
+    uses: ./.github/workflows/macos.yml
+    with:
+      image: ${{ matrix.args.image }}
 
   Windows:
-    needs:
-      - Output-Envs
-
     strategy:
       fail-fast: true
       matrix:
@@ -135,14 +86,9 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       image: ${{ matrix.image }}
-      vcpkg-deps-tag: ${{ needs.Output-Envs.outputs.VCPKG_DEPS_TAG }}
-      build-type: ${{ needs.Output-Envs.outputs.BUILD_TYPE }}
 
   Windows-Installer:
     name: Windows Installer
-    needs:
-      - Output-Envs
-
     strategy:
       fail-fast: true
       matrix:
@@ -152,7 +98,5 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       image: ${{ matrix.image }}
-      vcpkg-deps-tag: ${{ needs.Output-Envs.outputs.VCPKG_DEPS_TAG }}
-      build-type: ${{ needs.Output-Envs.outputs.BUILD_TYPE }}
       package: true
       artifact-suffix: "-installer"

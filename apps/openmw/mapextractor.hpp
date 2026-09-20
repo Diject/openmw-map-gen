@@ -86,6 +86,8 @@ namespace OMW
         int mFramesToWait;
         int mLocalMapSize;
         bool mFitLocalMaps;
+        bool mInteriorDisableWater;
+        int mInteriorAplhaOption;
 
         void saveWorldMapTexture();
         void saveWorldMapTextureBlocks(bool waterAlphaMode);
@@ -100,7 +102,7 @@ namespace OMW
         void saveExteriorCellHeights(const MWWorld::CellStore* cellStore);
         void saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName);
         void saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId, 
-                                 int segmentsX, int segmentsY);
+                                 int segmentsX, int segmentsY, bool useAlpha);
     };
 }
 
