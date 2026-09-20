@@ -86,7 +86,7 @@ set(OPENMW_LUA_API_REVISION 129)
 set(OPENMW_POSTPROCESSING_API_REVISION 5)
 
 # MapExtractor fork version
-set(MAPEXTRACTOR_VERSION_BUILD 8)  # Build number for MapExtractor fork
+set(MAPEXTRACTOR_VERSION_BUILD 9)  # Build number for MapExtractor fork
 
 set(OPENMW_VERSION_COMMITHASH "")
 set(OPENMW_VERSION_TAGHASH "")
