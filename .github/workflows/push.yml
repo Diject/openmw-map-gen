@@ -86,3 +86,17 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       image: ${{ matrix.image }}
+
+  Windows-Installer:
+    name: Windows Installer
+    strategy:
+      fail-fast: true
+      matrix:
+        image:
+        - "2022"
+
+    uses: ./.github/workflows/windows.yml
+    with:
+      image: ${{ matrix.image }}
+      package: true
+      artifact-suffix: "-installer"
