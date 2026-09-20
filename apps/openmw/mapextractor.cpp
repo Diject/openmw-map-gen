@@ -49,7 +49,8 @@ namespace OMW
         , mLocalMap(nullptr)
         , mLocalMapSize(localMapSize)
         , mFitLocalMaps(false)
-        , mInteriorWaterOption(3)
+        , mInteriorDisableWater(false)
+        , mInteriorAplhaOption(1)
     {
         // Only create directories if paths are not empty
         if (!mWorldMapOutputDir.empty())
@@ -388,25 +389,37 @@ namespace OMW
         // Create output directory if it doesn't exist
         std::filesystem::create_directories(mLocalMapOutputDir);
 
-        // Read the interior-water-option launch parameter (default 2).
         const auto& launchParams = MWBase::Environment::get().getLaunchParameters();
-        auto it = launchParams.find("interior-water-option");
-        if (it != launchParams.end() && !it->second.empty())
+        auto dw = launchParams.find("interior-disable-water");
+        if (dw != launchParams.end() && !dw->second.empty())
         {
             try
             {
-                mInteriorWaterOption = std::stoi(it->second);
+                mInteriorDisableWater = dw->second == "true";
             }
             catch (const std::exception&)
             {
-                mInteriorWaterOption = 2;
+                mInteriorDisableWater = false;
             }
-            mInteriorWaterOption = std::clamp(mInteriorWaterOption, 0, 3);
         }
 
-        // Configure water culling on the LocalMap for interior maps (option 1).
-        if (mLocalMap)
-            mLocalMap->setInteriorWaterCulling(mInteriorWaterOption == 1);
+        auto ao = launchParams.find("interior-alpha-option");
+        if (ao != launchParams.end() && !ao->second.empty())
+        {
+            try
+            {
+                mInteriorAplhaOption = std::stoi(ao->second);
+            }
+            catch (const std::exception&)
+            {
+                mInteriorAplhaOption = 2;
+            }
+            mInteriorAplhaOption = std::clamp(mInteriorAplhaOption, 0, 2);
+        }
+
+        // Configure water culling on the LocalMap for interior maps.
+        if (mLocalMap && mInteriorDisableWater)
+            mLocalMap->setInteriorWaterCulling(mInteriorDisableWater);
 
         if (!mLocalMap)
         {
@@ -780,13 +793,14 @@ namespace OMW
 
         Log(Debug::Info) << "Saving interior cell: " << cellName;
 
-        const bool hasWater = cellStore->getCell()->hasWater();
-        saveInteriorCellTextures(cellId, cellName, hasWater);
+        saveInteriorCellTextures(cellId, cellName);
         return true;
     }
 
-    void MapExtractor::saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName, bool hasWater)
+    void MapExtractor::saveInteriorCellTextures(const ESM::RefId& cellId, const std::string& cellName)
     {
+        bool useAlpha = mInteriorAplhaOption != 0;
+        int pixelSize = useAlpha ? 4 : 3;
         MyGUI::IntRect grid = mLocalMap->getInteriorGrid();
         
         std::string lowerCaseId = cellId.toDebugString();
@@ -852,10 +866,10 @@ namespace OMW
         int totalHeight = segmentsY * mLocalMapSize;
         
         osg::ref_ptr<osg::Image> combinedImage = new osg::Image;
-        combinedImage->allocateImage(totalWidth, totalHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
+        combinedImage->allocateImage(totalWidth, totalHeight, 1, useAlpha ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE);
         
         unsigned char* data = combinedImage->data();
-        memset(data, 0, totalWidth * totalHeight * 3);
+        memset(data, 0, totalWidth * totalHeight * pixelSize);
 
         for (int x = minX; x <= maxX; ++x)
         {
@@ -882,21 +896,23 @@ namespace OMW
                         
                         if (dx < totalWidth && dy < totalHeight)
                         {
-                            unsigned char* destPixel = data + ((dy * totalWidth + dx) * 3);
+                            unsigned char* destPixel = data + ((dy * totalWidth + dx) * pixelSize);
                             destPixel[0] = srcPixel[0];
                             destPixel[1] = srcPixel[1];
                             destPixel[2] = srcPixel[2];
+                            if (useAlpha)
+                                destPixel[3] = 255;
                         }
                     }
                 }
             }
         }
 
-        // Fade the empty border of water-filled interiors to black (option 2).
+        // Fade the empty border of interiors to black (option 1).
         // Interior maps have a 500 game-unit border around the content. Water can
         // render into this border, so we smoothly fade it out starting at the content
         // edge (500 units) down to a reserved 50 units from the texture edge.
-        if (mInteriorWaterOption == 2 && hasWater)
+        if (mInteriorAplhaOption == 1)
         {
             const float mapWorldSize = mLocalMap->getEffectiveMapWorldSize();
             if (mapWorldSize > 0.f)
@@ -938,10 +954,17 @@ namespace OMW
                             else
                                 factor = (distPx - fadeEndPx) / fadeRange;
 
-                            unsigned char* p = data + ((y * totalWidth + x) * 3);
-                            p[0] = static_cast<unsigned char>(p[0] * factor);
-                            p[1] = static_cast<unsigned char>(p[1] * factor);
-                            p[2] = static_cast<unsigned char>(p[2] * factor);
+                            unsigned char* p = data + ((y * totalWidth + x) * pixelSize);
+                            if (!useAlpha)
+                            {
+                                p[0] = static_cast<unsigned char>(p[0] * factor);
+                                p[1] = static_cast<unsigned char>(p[1] * factor);
+                                p[2] = static_cast<unsigned char>(p[2] * factor);
+                            }
+                            else
+                            {
+                                p[3] = static_cast<unsigned char>(255 * factor);
+                            }
                         }
                     }
                 }
@@ -951,7 +974,7 @@ namespace OMW
         // A vertical ray is cast downward for each sample. Where it misses, the
         // texture fades to black with a smooth falloff over two step sizes, so the
         // transition has no hard square edges.
-        else if (mInteriorWaterOption == 3 && hasWater)
+        else if (mInteriorAplhaOption == 2)
         {
             const MWPhysics::RayCastingInterface* rayCasting
                 = MWBase::Environment::get().getWorld()->getRayCasting();
@@ -969,8 +992,8 @@ namespace OMW
                     // Use the same ray step as exterior maps (128 game units).
                     constexpr float rayStep
                         = static_cast<float>(Constants::CellSizeInUnits) / 128.f;
-                    constexpr float rayTop = 20000.0f;
-                    constexpr float rayBottom = -10000.0f;
+                    float rayTop = bounds.zMax() + 2000.0f;
+                    float rayBottom = bounds.zMin() - 2000.0f;
                     const int mask = MWPhysics::CollisionType_World | MWPhysics::CollisionType_HeightMap
                         | MWPhysics::CollisionType_Door;
 
@@ -1097,10 +1120,17 @@ namespace OMW
                             const float f
                                 = (f00 * (1.f - fu) + f10 * fu) * (1.f - fv) + (f01 * (1.f - fu) + f11 * fu) * fv;
 
-                            unsigned char* p = data + ((py * totalWidth + px) * 3);
-                            p[0] = static_cast<unsigned char>(p[0] * f);
-                            p[1] = static_cast<unsigned char>(p[1] * f);
-                            p[2] = static_cast<unsigned char>(p[2] * f);
+                            unsigned char* p = data + ((py * totalWidth + px) * pixelSize);
+                            if (!useAlpha)
+                            {
+                                p[0] = static_cast<unsigned char>(p[0] * f);
+                                p[1] = static_cast<unsigned char>(p[1] * f);
+                                p[2] = static_cast<unsigned char>(p[2] * f);
+                            }
+                            else
+                            {
+                                p[3] = static_cast<unsigned char>(255 * f);
+                            }
                         }
                     }
                 }
@@ -1119,11 +1149,11 @@ namespace OMW
             return;
         }
 
-        saveInteriorMapInfo(cellId, lowerCaseId, segmentsX, segmentsY, hasWater);
+        saveInteriorMapInfo(cellId, lowerCaseId, segmentsX, segmentsY, useAlpha);
     }
 
     void MapExtractor::saveInteriorMapInfo(const ESM::RefId& cellId, const std::string& lowerCaseId,
-                                           int segmentsX, int segmentsY, bool hasWater)
+                                           int segmentsX, int segmentsY, bool hasAlpha)
     {
         // Get the bounds, center and angle that LocalMap actually used for rendering
         const osg::BoundingBox& bounds = mLocalMap->getInteriorBounds();
@@ -1172,8 +1202,8 @@ namespace OMW
         file << "hT: " << segmentsY << "\n";
         file << "tSc: " << tSc << "\n";
         file << "tS: " << mLocalMapSize << "\n";
-        if (hasWater)
-            file << "hWt: " << "true" << "\n";
+        if (hasAlpha)
+            file << "hA: " << "true" << "\n";
         file << "mBnds:\n";
         file << "  min: [" << bounds.xMin() + padding << ", " << bounds.yMin() + padding << ", " << bounds.zMin() << "]\n";
         file << "  max: [" << bounds.xMax() - padding << ", " << bounds.yMax() - padding << ", " << bounds.zMax() << "]\n";
