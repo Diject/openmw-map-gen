@@ -1,3 +1,6 @@
+V10:
+- Added a workaround for cases where an unavoidable OpenMW error occurs during teleportation to a cell, stopping the process.
+
 V9:
 - Updated to the release version of OpenMW 0.51.
 - The launcher has been updated to a version that supports saving the positions of disabled content files.
