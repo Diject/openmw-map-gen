@@ -13,6 +13,14 @@ local lastTimestamp = core.getRealTime() - 50
 local timeFromLast = 50
 local onlyPlayerCell = true
 local isTilemapGenerated = false
+local pendingTeleport = true
+local successfulTeleport = true
+local teleportRequestTm = 0
+local pendingPl
+local pendingCell
+local pendingPos
+local isCellGenCompleted = false
+local isCellGenStarted = false
 
 local step = 0
 
@@ -80,6 +88,7 @@ local function processAndTeleport(skipExtraction)
     end
 
     local function func()
+        isCellGenStarted = true
         if world.isMapExtractionActive() then
             realTimer.new(0, func)
             return
@@ -97,52 +106,66 @@ local function processAndTeleport(skipExtraction)
             end
 
             local res, cell = pcall(function ()
-                return world.cells[i]
+                local c = world.cells[i]
+                if not c or not c.id then return nil end
+                return c
             end)
             if not res then cell = nil end
             i = i - 1
 
             local pos
+            local doBreak = false
 
             local customCellId = getCellId(cell)
             if not cell or not customCellId or visitedCells[customCellId] then goto continue end
 
-            visitedCells[customCellId] = true
-            if not onlyPlayerCell and cell.isExterior then
-                for j = cell.gridX - 1, cell.gridX + 1 do
-                    for k = cell.gridY - 1, cell.gridY + 1 do
-                        visitedCells[getExCellId(j, k)] = true
+            pcall(function ()
+                visitedCells[customCellId] = true
+                if not onlyPlayerCell and cell.isExterior then
+                    for j = cell.gridX - 1, cell.gridX + 1 do
+                        for k = cell.gridY - 1, cell.gridY + 1 do
+                            visitedCells[getExCellId(j, k)] = true
+                        end
                     end
                 end
-            end
 
-            if cell.isExterior then
-                pos = util.vector3(cell.gridX * 8192 + 4096, cell.gridY * 8192 + 4096, 0)
-            else
-                pos = util.vector3(0, 0, 0)
-            end
+                if cell.isExterior then
+                    pos = util.vector3(cell.gridX * 8192 + 4096, cell.gridY * 8192 + 4096, 0)
+                else
+                    pos = util.vector3(0, 0, 0)
+                end
 
-            do
-                local estimatedTimeLeft = math.max(timeFromLast, 1) / 50 * i
-                local hours = math.floor(estimatedTimeLeft / 3600)
-                estimatedTimeLeft = estimatedTimeLeft % 3600
-                local minutes = math.floor(estimatedTimeLeft / 60)
-                local seconds = estimatedTimeLeft % 60
-                pl:sendEvent("builtin:map_extractor:updateMenu", {
-                    line2 = string.format("Processed %d / %d cells", cellCount - i, cellCount),
-                    line3 = string.format("Estimated time left: %d:%02d:%02.0f", hours, minutes, seconds),
-                })
+                do
+                    local estimatedTimeLeft = math.max(timeFromLast, 1) / 50 * i
+                    local hours = math.floor(estimatedTimeLeft / 3600)
+                    estimatedTimeLeft = estimatedTimeLeft % 3600
+                    local minutes = math.floor(estimatedTimeLeft / 60)
+                    local seconds = estimatedTimeLeft % 60
+                    pl:sendEvent("builtin:map_extractor:updateMenu", {
+                        line2 = string.format("Processed %d / %d cells", cellCount - i, cellCount),
+                        line3 = string.format("Estimated time left: %d:%02d:%02.0f", hours, minutes, seconds),
+                    })
 
-                print(string.format('Teleporting to cell #%d: "%s"', i, customCellId))
-                pl:teleport(cell, pos)
+                    print(string.format('Teleporting to cell #%d: "%s"', i, customCellId))
 
-                break
-            end
+                    pendingTeleport = true
+                    successfulTeleport = false
+                    pendingCell = cell
+                    pendingPos = pos
+                    pendingPl = pl
+                    core.sendGlobalEvent("builtin:map_extractor:runTeleport")
+
+                    doBreak = true
+                end
+            end)
+
+            if doBreak then break end
 
             ::continue::
         until i <= 0
 
         if i <= 0 then
+            isCellGenCompleted = true
             generateTilemap()
         end
     end
@@ -227,9 +250,23 @@ return {
     engineHandlers = {
         onUpdate = function(dt)
             realTimer.updateTimers()
+            if not isCellGenCompleted and isCellGenStarted and (
+                    pendingTeleport == false and successfulTeleport == false and core.getRealTime() - teleportRequestTm > 5 or
+                    (pendingTeleport == false and successfulTeleport and core.getRealTime() - teleportRequestTm > 10)) then
+                pendingTeleport = true
+                successfulTeleport = true
+                processAndTeleport()
+            end
         end,
     },
     eventHandlers = {
+        ["builtin:map_extractor:runTeleport"] = function ()
+            teleportRequestTm = core.getRealTime()
+            pendingTeleport = false
+            pendingPl:teleport(pendingCell, pendingPos)
+            successfulTeleport = true
+        end,
+
         ["builtin:map_extractor:teleport"] = function (pl)
             processAndTeleport()
         end,
